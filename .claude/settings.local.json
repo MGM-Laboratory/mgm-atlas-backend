@@ -8,7 +8,9 @@
       "Read(//d/MGM/Code/Internal Service/**)",
       "Bash(git check-ignore *)",
       "Bash(pnpm prisma:generate)",
-      "Bash(pnpm build *)"
+      "Bash(pnpm build *)",
+      "Bash(pnpm test *)",
+      "Bash(pnpm exec *)"
     ]
   }
 }
