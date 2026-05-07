@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where pnpm *)",
+      "Bash(pnpm --version)",
+      "Bash(pnpm install *)",
+      "Read(//d/MGM/Code/Internal Service/mgm-atlas/**)",
+      "Read(//d/MGM/Code/Internal Service/**)",
+      "Bash(git check-ignore *)",
+      "Bash(pnpm prisma:generate)",
+      "Bash(pnpm build *)"
+    ]
+  }
+}
