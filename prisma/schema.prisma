@@ -1,0 +1,315 @@
+// MGM Atlas — primary data model
+// Postgres lives on an external host; we never embed it in docker-compose.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────
+
+enum ProjectPhase {
+  IDEA
+  PLANNING
+  IN_DEVELOPMENT
+  IN_REVIEW
+  SHIPPED
+  ARCHIVED
+}
+
+enum ProjectVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum ProjectRole {
+  PROJECT_MANAGER
+  CONTRIBUTOR
+}
+
+enum ContributionRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  REVOKED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum NotificationType {
+  CONTRIBUTION_REQUEST_SUBMITTED
+  CONTRIBUTION_REQUEST_APPROVED
+  CONTRIBUTION_REQUEST_REJECTED
+  PROJECT_INVITED
+  PROJECT_ROLE_CHANGED
+  PROJECT_REMOVED
+}
+
+// ─── Identity ────────────────────────────────────────────────────────────
+
+model User {
+  id          String   @id @default(uuid())
+  keycloakId  String   @unique
+  email       String   @unique
+  name        String
+  avatarUrl   String?
+  bio         String?
+  isAdmin     Boolean  @default(false)
+  lastLoginAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ownedProjects        Project[]              @relation("ProjectOwner")
+  memberships          ProjectMember[]
+  contributionRequests ContributionRequest[]
+  resolvedRequests     ContributionRequest[]  @relation("ResolvedBy")
+  notifications        Notification[]
+  invitedReceived      ProjectInvite[]        @relation("InvitedUser")
+  invitedSent          ProjectInvite[]        @relation("InvitedBy")
+  bookmarks            Bookmark[]
+  featuredAssignments  FeaturedProject[]      @relation("FeaturedBy")
+
+  @@index([email])
+  @@index([isAdmin])
+}
+
+// ─── Tags ────────────────────────────────────────────────────────────────
+
+model Tag {
+  id        String       @id @default(uuid())
+  name      String
+  category  String
+  slug      String       @unique
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  projects  ProjectTag[]
+
+  @@unique([name, category])
+  @@index([category])
+}
+
+// ─── Projects ────────────────────────────────────────────────────────────
+
+model Project {
+  id                  String            @id @default(uuid())
+  slug                String            @unique
+  title               String
+  shortDescription    String
+  /// Notion-style rich-text JSON document (Tiptap-compatible).
+  description         Json
+  /// Canonical thumbnail URL (set automatically from the first media item).
+  thumbnailUrl        String?
+  thumbnailType       MediaType?
+  techStack           String[]          @default([])
+  phase               ProjectPhase      @default(IDEA)
+  visibility          ProjectVisibility @default(PRIVATE)
+  collaborationRoles  String[]          @default([])
+  /// { pmTool?, repository?, staging?, designs?, other?: { label, url }[] }
+  internalLinks       Json?
+  ownerId             String
+  publishedAt         DateTime?
+  archivedAt          DateTime?
+  deletedAt           DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  owner                User                  @relation("ProjectOwner", fields: [ownerId], references: [id])
+  media                ProjectMedia[]
+  tags                 ProjectTag[]
+  members              ProjectMember[]
+  contributionRequests ContributionRequest[]
+  invites              ProjectInvite[]
+  featured             FeaturedProject?
+  bookmarks            Bookmark[]
+
+  @@index([visibility, phase])
+  @@index([ownerId])
+  @@index([archivedAt])
+  @@index([deletedAt])
+}
+
+model ProjectMedia {
+  id        String    @id @default(uuid())
+  projectId String
+  url       String
+  type      MediaType
+  /// 0 = thumbnail / cover. Subsequent items are the gallery in display order.
+  order     Int       @default(0)
+  width     Int?
+  height    Int?
+  sizeBytes Int?
+  createdAt DateTime  @default(now())
+
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, order])
+  @@index([projectId])
+}
+
+model ProjectTag {
+  projectId String
+  tagId     String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, tagId])
+  @@index([tagId])
+}
+
+model ProjectMember {
+  id        String      @id @default(uuid())
+  projectId String
+  userId    String
+  role      ProjectRole
+  /// The collaboration role (Frontend Engineer, etc.) the user holds on this project.
+  title     String?
+  joinedAt  DateTime    @default(now())
+
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@index([projectId, role])
+}
+
+// ─── Contributions ───────────────────────────────────────────────────────
+
+model ContributionRequest {
+  id           String                    @id @default(uuid())
+  projectId    String
+  userId       String
+  /// The collaboration role they're applying for (e.g. "Frontend Engineer").
+  role         String
+  message      String
+  status       ContributionRequestStatus @default(PENDING)
+  resolvedAt   DateTime?
+  resolvedById String?
+  /// Optional moderator note shown to the applicant on approve/reject.
+  resolutionNote String?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  project      Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user         User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resolvedBy   User?                     @relation("ResolvedBy", fields: [resolvedById], references: [id])
+
+  @@index([projectId, status])
+  @@index([userId, status])
+}
+
+model ProjectInvite {
+  id            String       @id @default(uuid())
+  projectId     String
+  invitedUserId String
+  invitedById   String
+  role          ProjectRole  @default(CONTRIBUTOR)
+  /// Collaboration role title to grant on acceptance.
+  title         String?
+  status        InviteStatus @default(PENDING)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invitedUser   User         @relation("InvitedUser", fields: [invitedUserId], references: [id], onDelete: Cascade)
+  invitedBy     User         @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, invitedUserId, status])
+  @@index([invitedUserId, status])
+}
+
+// ─── Notifications ───────────────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  /// Path within Atlas to navigate to (e.g. /projects/<slug>/manage/requests).
+  link      String?
+  /// Arbitrary payload for the frontend (project id, request id, actor id, etc.)
+  metadata  Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
+// ─── Featured (admin-curated dashboard hero) ─────────────────────────────
+
+model FeaturedProject {
+  projectId String   @id
+  setById   String
+  order     Int      @default(0)
+  setAt     DateTime @default(now())
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  setBy     User     @relation("FeaturedBy", fields: [setById], references: [id])
+
+  @@index([order])
+}
+
+// ─── Configurable list of collaboration roles (admin-managed) ────────────
+
+model CollaborationRole {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  order     Int      @default(0)
+  archivedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([archivedAt])
+}
+
+// ─── Bookmarks ───────────────────────────────────────────────────────────
+
+model Bookmark {
+  userId    String
+  projectId String
+  createdAt DateTime @default(now())
+
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([userId, projectId])
+  @@index([projectId])
+}
+
+// ─── Webhook delivery log (so we can see if n8n is failing) ──────────────
+
+model WebhookDelivery {
+  id           String   @id @default(uuid())
+  event        String
+  payload      Json
+  status       Int?
+  responseBody String?
+  attempt      Int      @default(1)
+  succeeded    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  completedAt  DateTime?
+
+  @@index([event, succeeded])
+  @@index([createdAt])
+}
