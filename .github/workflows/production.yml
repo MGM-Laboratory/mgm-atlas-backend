@@ -10,11 +10,7 @@ env:
   ENVIRONMENT: production
 
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yml
-
   build:
-    needs: ci
     runs-on: ubuntu-latest
     environment: production
     permissions:
