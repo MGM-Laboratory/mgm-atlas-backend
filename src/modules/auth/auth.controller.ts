@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Delete, Body, Logger } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Public } from '@/common/decorators/public.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@/common/types/authenticated-user.type';
 import { AuthService } from './auth.service';
@@ -19,6 +20,7 @@ export class AuthController {
    * Create a session after successful Keycloak authentication.
    * Frontend calls this after Keycloak redirects back with tokens.
    */
+  @Public()
   @Post('login')
   @ApiOperation({ summary: 'Create a session from Keycloak tokens' })
   @ApiOkResponse({
