@@ -9,7 +9,7 @@
     "pnpm": ">=8"
   },
   "scripts": {
-    "build": "nest build && tsc-alias -p tsconfig.build.json",
+    "build": "prisma generate && nest build && tsc-alias -p tsconfig.build.json",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
