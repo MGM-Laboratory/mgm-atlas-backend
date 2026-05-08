@@ -53,8 +53,8 @@ export class SessionService {
   async validateSession(sessionId: string): Promise<{
     userId: string;
     accessToken: string;
-    refreshToken?: string;
-    idToken?: string;
+    refreshToken: string | null;
+    idToken: string | null;
     expiresAt: Date;
   } | null> {
     // Clean up expired sessions periodically
