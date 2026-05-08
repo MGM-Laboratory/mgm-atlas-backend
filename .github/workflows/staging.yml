@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: labmgm/atlas-backend
+  IMAGE_NAME: labmgm/mgm-atlas-backend
   ENVIRONMENT: staging
 
 jobs:
