@@ -31,6 +31,7 @@ export class AuthController {
             keycloakId: { type: 'string' },
             email: { type: 'string' },
             name: { type: 'string' },
+            avatarUrl: { type: 'string', nullable: true },
             isAdmin: { type: 'boolean' },
           },
         },

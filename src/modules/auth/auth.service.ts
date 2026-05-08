@@ -80,7 +80,7 @@ export class AuthService {
     email: string;
     name: string;
     picture?: string;
-  }): Promise<{ id: string; keycloakId: string; email: string; name: string; isAdmin: boolean }> {
+  }): Promise<{ id: string; keycloakId: string; email: string; name: string; avatarUrl: string | null; isAdmin: boolean }> {
     const email = (data.email ?? '').toLowerCase().trim();
     const name = data.name ?? 'Unknown';
     const avatarUrl = data.picture ?? null;
@@ -118,6 +118,7 @@ export class AuthService {
         keycloakId: true,
         email: true,
         name: true,
+        avatarUrl: true,
         isAdmin: true,
       },
     });
