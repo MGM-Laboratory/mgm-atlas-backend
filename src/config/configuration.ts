@@ -3,7 +3,7 @@ export default () => ({
     env: process.env.NODE_ENV ?? 'development',
     port: parseInt(process.env.PORT ?? '3000', 10),
     baseUrl: process.env.APP_BASE_URL ?? 'http://localhost:3000',
-    globalPrefix: process.env.API_GLOBAL_PREFIX ?? 'api',
+    globalPrefix: process.env.API_GLOBAL_PREFIX ?? '',
     corsOrigins: (process.env.CORS_ORIGINS ?? '')
       .split(',')
       .map((s) => s.trim())
