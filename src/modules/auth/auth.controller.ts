@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Logger } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@/common/types/authenticated-user.type';
@@ -8,6 +8,8 @@ import { SessionService } from './session.service';
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     private readonly authService: AuthService,
     private readonly sessionService: SessionService,
@@ -50,22 +52,31 @@ export class AuthController {
       idToken?: string;
     },
   ) {
-    // Sync user from Keycloak token data
-    const user = await this.authService.syncUserFromTokenData(dto);
+    try {
+      this.logger.log('Login request received', { keycloakId: dto.keycloakId, email: dto.email });
 
-    // Create session in database
-    const { sessionId, expiresAt } = await this.sessionService.createSession(
-      user.id,
-      dto.accessToken,
-      dto.refreshToken,
-      dto.idToken,
-    );
+      // Sync user from Keycloak token data
+      const user = await this.authService.syncUserFromTokenData(dto);
+      this.logger.log('User synced', { userId: user.id });
 
-    return {
-      sessionId,
-      expiresAt,
-      user,
-    };
+      // Create session in database
+      const { sessionId, expiresAt } = await this.sessionService.createSession(
+        user.id,
+        dto.accessToken,
+        dto.refreshToken,
+        dto.idToken,
+      );
+      this.logger.log('Session created', { sessionId, userId: user.id });
+
+      return {
+        sessionId,
+        expiresAt,
+        user,
+      };
+    } catch (error) {
+      this.logger.error('Login failed', error);
+      throw error;
+    }
   }
 
   /**
