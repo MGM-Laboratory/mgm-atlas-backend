@@ -46,7 +46,7 @@ jobs:
           platforms: linux/amd64
           tags: |
             ${{ vars.DOCKERHUB_USERNAME}}/${{ vars.IMAGE_NAME }}:latest
-            ${{ vars.DOCKERHUB_USERNAME}}/${{ vars.IMAGE_NAME }}:${{ steps.meta.outputs.ts }}
-            ${{ vars.DOCKERHUB_USERNAME}}/${{ vars.IMAGE_NAME }}:${{ steps.meta.outputs.sha }}
+            ${{ vars.DOCKERHUB_USERNAME}}/${{ vars.IMAGE_NAME }}:latest-${{ steps.meta.outputs.ts }}
+            ${{ vars.DOCKERHUB_USERNAME}}/${{ vars.IMAGE_NAME }}:latest-${{ steps.meta.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

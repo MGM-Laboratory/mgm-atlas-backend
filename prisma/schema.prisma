@@ -83,9 +83,29 @@ model User {
   invitedSent          ProjectInvite[]        @relation("InvitedBy")
   bookmarks            Bookmark[]
   featuredAssignments  FeaturedProject[]      @relation("FeaturedBy")
+  sessions             Session[]
 
   @@index([email])
   @@index([isAdmin])
+}
+
+// ─── Sessions (database-backed, no cookies) ───────────────────────────────
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  accessToken  String
+  refreshToken String?
+  idToken      String?
+  
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // ─── Tags ────────────────────────────────────────────────────────────────

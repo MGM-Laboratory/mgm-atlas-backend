@@ -1,69 +1,55 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
-import { ExtractJwt, Strategy } from 'passport-jwt';
-import { passportJwtSecret } from 'jwks-rsa';
+import { Strategy as PassportCustomStrategy } from 'passport-custom';
+import { Request } from 'express';
+import { PrismaService } from '@/prisma/prisma.service';
+import { SessionService } from '../session.service';
 import { AuthenticatedUser } from '@/common/types/authenticated-user.type';
-import { AuthService } from '../auth.service';
-
-interface KeycloakJwtPayload {
-  sub: string;
-  email?: string;
-  email_verified?: boolean;
-  preferred_username?: string;
-  name?: string;
-  given_name?: string;
-  family_name?: string;
-  picture?: string;
-  iss: string;
-  aud?: string | string[];
-  exp: number;
-  iat: number;
-}
 
 @Injectable()
-export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
+export class JwtStrategy extends PassportStrategy(PassportCustomStrategy, 'jwt') {
   private readonly logger = new Logger(JwtStrategy.name);
 
   constructor(
-    private readonly config: ConfigService,
-    private readonly authService: AuthService,
+    private readonly prisma: PrismaService,
+    private readonly sessionService: SessionService,
   ) {
-    const jwksUri = config.getOrThrow<string>('keycloak.jwksUri');
-    const issuer = config.getOrThrow<string>('keycloak.issuer');
-    const audience = config.get<string>('keycloak.audience') ?? 'account';
-
-    super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      ignoreExpiration: false,
-      issuer,
-      audience,
-      algorithms: ['RS256'],
-      secretOrKeyProvider: passportJwtSecret({
-        cache: true,
-        cacheMaxAge: 10 * 60 * 1000,
-        rateLimit: true,
-        jwksRequestsPerMinute: 10,
-        jwksUri,
-      }),
-    });
+    super();
   }
 
-  async validate(payload: KeycloakJwtPayload): Promise<AuthenticatedUser> {
-    if (!payload.sub) {
-      throw new UnauthorizedException('Token has no subject claim.');
-    }
-    if (!payload.email) {
-      // Keycloak should always send email for our realm — if it's missing, the
-      // token was likely issued for a service account or misconfigured client.
-      throw new UnauthorizedException('Token has no email claim.');
+  async validate(req: Request): Promise<AuthenticatedUser> {
+    // Extract Bearer token from Authorization header
+    const authHeader = req.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new UnauthorizedException('Missing or invalid Authorization header.');
     }
 
-    try {
-      return await this.authService.syncUserFromToken(payload);
-    } catch (err) {
-      this.logger.error('Failed to sync user from Keycloak token', err as Error);
-      throw new UnauthorizedException('Could not establish user session.');
+    const sessionId = authHeader.substring(7); // Remove "Bearer " prefix
+
+    // Validate the session ID against the database
+    const session = await this.sessionService.validateSession(sessionId);
+
+    if (!session) {
+      throw new UnauthorizedException('Invalid or expired session.');
     }
+
+    // Load the user from the database
+    const user = await this.prisma.user.findUnique({
+      where: { id: session.userId },
+      select: {
+        id: true,
+        keycloakId: true,
+        email: true,
+        name: true,
+        avatarUrl: true,
+        isAdmin: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    return user as AuthenticatedUser;
   }
 }
