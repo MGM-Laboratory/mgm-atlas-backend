@@ -1,22 +1,14 @@
-# MGM Atlas — backend deploy compose.
-# PostgreSQL is intentionally NOT defined here — it lives on a separate host
-# and is reached via DATABASE_URL.
-#
-# Usage on a deploy target:
-#   docker compose pull
-#   docker compose up -d
-
 services:
   atlas-backend:
-    image: ${IMAGE:-labmgm/atlas-backend:latest}
+    image: labmgm/mgm-atlas-backend:latest
     container_name: atlas-backend
-    restart: unless-stopped
+    restart: always
     env_file:
       - .env
     ports:
-      - "${HOST_PORT:-3000}:3000"
+      - "${HOST_PORT:-3000}:${PORT}"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/v1/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:${HOST_PORT}/api/v1/health"]
       interval: 30s
       timeout: 5s
       retries: 3

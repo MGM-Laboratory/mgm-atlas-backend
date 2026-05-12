@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where pnpm *)",
+      "Bash(pnpm --version)",
+      "Bash(pnpm install *)"
+    ]
+  }
+}

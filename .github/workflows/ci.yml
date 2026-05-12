@@ -2,7 +2,7 @@ name: ci
 
 on:
   pull_request:
-    branches: [dev, main]
+    branches: ["*"]
   workflow_call:
 
 jobs:
@@ -32,4 +32,4 @@ jobs:
         run: pnpm build
 
       - name: Test
-        run: pnpm test --passWithNoTests
+        run: pnpm exec jest --passWithNoTests
