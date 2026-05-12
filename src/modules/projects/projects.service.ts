@@ -34,6 +34,17 @@ const CARD_SELECT = {
   _count: { select: { members: true } },
 } satisfies Prisma.ProjectSelect;
 
+const DETAIL_INCLUDE = {
+  owner: { select: { id: true, name: true, email: true, avatarUrl: true } },
+  tags: { include: { tag: true } },
+  media: { orderBy: { order: 'asc' } },
+  members: {
+    include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
+    orderBy: [{ role: 'asc' }, { joinedAt: 'asc' }],
+  },
+  _count: { select: { members: true, contributionRequests: { where: { status: 'PENDING' } } } },
+} satisfies Prisma.ProjectInclude;
+
 @Injectable()
 export class ProjectsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -70,23 +81,22 @@ export class ProjectsService {
 
   // ─── Read (single) ─────────────────────────────────────────────────────
 
-  async findOne(projectId: string, access: ProjectAccess) {
+  async findOne(projectId: string, access: ProjectAccess, userId?: string) {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, deletedAt: null },
-      include: {
-        owner: { select: { id: true, name: true, email: true, avatarUrl: true } },
-        tags: { include: { tag: true } },
-        media: { orderBy: { order: 'asc' } },
-        members: {
-          include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
-          orderBy: [{ role: 'asc' }, { joinedAt: 'asc' }],
-        },
-        _count: { select: { members: true, contributionRequests: { where: { status: 'PENDING' } } } },
-      },
+      include: DETAIL_INCLUDE,
     });
     if (!project) throw new NotFoundException('Project not found.');
 
-    return this.shapeForAccess(project, access);
+    let bookmarked = false;
+    if (userId) {
+      const bm = await this.prisma.bookmark.findUnique({
+        where: { userId_projectId: { userId, projectId: project.id } },
+        select: { userId: true },
+      });
+      bookmarked = !!bm;
+    }
+    return { ...this.shapeForAccess(project, access), bookmarked };
   }
 
   // ─── Read (list / discovery) ───────────────────────────────────────────
@@ -322,15 +332,7 @@ export class ProjectsService {
   }
 
   private shapeForAccess(
-    project: Prisma.ProjectGetPayload<{
-      include: {
-        owner: true;
-        tags: { include: { tag: true } };
-        media: true;
-        members: { include: { user: true } };
-        _count: { select: { members: true; contributionRequests: true } };
-      };
-    }>,
+    project: Prisma.ProjectGetPayload<{ include: typeof DETAIL_INCLUDE }>,
     access: ProjectAccess,
   ) {
     const base = {
