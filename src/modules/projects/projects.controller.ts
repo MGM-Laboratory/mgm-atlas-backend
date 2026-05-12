@@ -63,7 +63,7 @@ export class ProjectsController {
   @Get(':slug')
   async findOne(@CurrentUser() user: AuthenticatedUser, @Param('slug') slug: string) {
     const { projectId, access } = await this.access.resolve(slug, user);
-    return this.projects.findOne(projectId, access);
+    return this.projects.findOne(projectId, access, user.id);
   }
 
   @Patch(':id')

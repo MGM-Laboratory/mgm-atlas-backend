@@ -81,14 +81,22 @@ export class ProjectsService {
 
   // ─── Read (single) ─────────────────────────────────────────────────────
 
-  async findOne(projectId: string, access: ProjectAccess) {
+  async findOne(projectId: string, access: ProjectAccess, userId?: string) {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, deletedAt: null },
       include: DETAIL_INCLUDE,
     });
     if (!project) throw new NotFoundException('Project not found.');
 
-    return this.shapeForAccess(project, access);
+    let bookmarked = false;
+    if (userId) {
+      const bm = await this.prisma.bookmark.findUnique({
+        where: { userId_projectId: { userId, projectId: project.id } },
+        select: { userId: true },
+      });
+      bookmarked = !!bm;
+    }
+    return { ...this.shapeForAccess(project, access), bookmarked };
   }
 
   // ─── Read (list / discovery) ───────────────────────────────────────────
