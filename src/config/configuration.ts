@@ -18,7 +18,9 @@ export default () => ({
     clientId: process.env.KEYCLOAK_CLIENT_ID!,
     issuer: process.env.KEYCLOAK_ISSUER!,
     jwksUri: process.env.KEYCLOAK_JWKS_URI!,
-    audience: process.env.KEYCLOAK_AUDIENCE ?? 'account',
+    // Optional. When unset, audience validation is skipped. Set this only if
+    // you've configured a Keycloak audience mapper for the Atlas client.
+    audience: process.env.KEYCLOAK_AUDIENCE || undefined,
   },
   bootstrap: {
     adminEmail: process.env.BOOTSTRAP_ADMIN_EMAIL ?? 'admin@labmgm.org',
