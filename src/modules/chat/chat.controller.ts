@@ -15,7 +15,9 @@ import { ProjectAccessService } from '@/modules/projects/project-access.service'
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { ListMessagesDto } from './dto/list-messages.dto';
+import { PresignChatAttachmentDto } from './dto/presign-attachment.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
+import { ChatAttachmentsService } from './services/chat-attachments.service';
 import { ChatChannelsService } from './services/chat-channels.service';
 import { ChatMessagesService } from './services/chat-messages.service';
 import { ChatNotificationsService } from './services/chat-notifications.service';
@@ -38,6 +40,7 @@ export class ChatController {
     private readonly pins: ChatPinsService,
     private readonly notifications: ChatNotificationsService,
     private readonly realtime: ChatRealtimePublisher,
+    private readonly attachments: ChatAttachmentsService,
   ) {}
 
   // ─── Channels ────────────────────────────────────────────────────────
@@ -167,6 +170,26 @@ export class ChatController {
     this.access.assertInsider(access);
     await this.assertChannelInProject(channelId, projectId);
     return this.pins.list(channelId);
+  }
+
+  // ─── Attachments ─────────────────────────────────────────────────────
+
+  /**
+   * Presigned PUT URL for a chat attachment upload. Client PUTs the
+   * file to `uploadUrl` and includes the returned `s3Key`/`publicUrl`/
+   * `kind` in the message body's `attachments` array.
+   */
+  @Post('channels/:channelId/attachments/presign')
+  async presignAttachment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slugOrId') slugOrId: string,
+    @Param('channelId') channelId: string,
+    @Body() dto: PresignChatAttachmentDto,
+  ) {
+    const { projectId, access } = await this.access.resolve(slugOrId, user);
+    this.access.assertInsider(access);
+    await this.assertChannelInProject(channelId, projectId);
+    return this.attachments.presign(channelId, dto);
   }
 
   /**

@@ -1,13 +1,19 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '@/modules/auth/auth.module';
+import { MediaModule } from '@/modules/media/media.module';
 import { NotificationsModule } from '@/modules/notifications/notifications.module';
 import { ProjectsModule } from '@/modules/projects/projects.module';
 import { ChatController } from './chat.controller';
+import { ChatGifsController } from './chat-gifs.controller';
+import { ChatLinkPreviewController } from './chat-link-preview.controller';
 import { ChatMessagesController } from './chat-messages.controller';
 import { ChatOverviewController } from './chat-overview.controller';
 import { ChatGateway } from './gateway/chat.gateway';
 import { WsSessionGuard } from './gateway/ws-session.guard';
+import { ChatAttachmentsService } from './services/chat-attachments.service';
 import { ChatChannelsService } from './services/chat-channels.service';
+import { ChatGifsService } from './services/chat-gifs.service';
+import { ChatLinkPreviewService } from './services/chat-link-preview.service';
 import { ChatMessagesService } from './services/chat-messages.service';
 import { ChatNotificationsService } from './services/chat-notifications.service';
 import { ChatOverviewService } from './services/chat-overview.service';
@@ -28,8 +34,14 @@ import { ChatTypingService } from './services/chat-typing.service';
  * fanout is disabled.
  */
 @Module({
-  imports: [AuthModule, ProjectsModule, NotificationsModule],
-  controllers: [ChatController, ChatMessagesController, ChatOverviewController],
+  imports: [AuthModule, ProjectsModule, NotificationsModule, MediaModule],
+  controllers: [
+    ChatController,
+    ChatMessagesController,
+    ChatOverviewController,
+    ChatLinkPreviewController,
+    ChatGifsController,
+  ],
   providers: [
     ChatChannelsService,
     ChatMessagesService,
@@ -40,6 +52,9 @@ import { ChatTypingService } from './services/chat-typing.service';
     ChatPresenceService,
     ChatTypingService,
     ChatRealtimePublisher,
+    ChatLinkPreviewService,
+    ChatGifsService,
+    ChatAttachmentsService,
     ChatGateway,
     WsSessionGuard,
   ],
