@@ -124,6 +124,40 @@ class EnvVars {
   @IsString()
   @IsNotEmpty()
   INTERNAL_JWT_SECRET!: string;
+
+  // ─── Chat (all optional; when REDIS_URL is unset, sockets stay dormant
+  //     and chat falls back to REST polling so prod boots unchanged) ───
+  @IsOptional()
+  @IsString()
+  REDIS_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  CHAT_SOCKET_PATH?: string;
+
+  @IsOptional()
+  @IsInt()
+  CHAT_LINK_PREVIEW_CACHE_TTL?: number;
+
+  @IsOptional()
+  @IsString()
+  TENOR_API_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  GIPHY_API_KEY?: string;
+
+  @IsOptional()
+  @IsInt()
+  CHAT_MAX_ATTACHMENTS_PER_MESSAGE?: number;
+
+  @IsOptional()
+  @IsInt()
+  CHAT_MAX_ATTACHMENT_BYTES?: number;
+
+  @IsOptional()
+  @IsInt()
+  CHAT_EDIT_WINDOW_HOURS?: number;
 }
 
 export function validateEnv(raw: Record<string, unknown>) {
