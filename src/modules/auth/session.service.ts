@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AuthenticatedUser } from '@/common/types/authenticated-user.type';
 import { PrismaService } from '@/prisma/prisma.service';
 
 @Injectable()
@@ -8,6 +9,30 @@ export class SessionService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {}
+
+  /**
+   * Validate a bearer sessionId and return the loaded user. Used by
+   * both the HTTP JwtStrategy and the WebSocket gateway guard so the
+   * same expiry / cleanup / user-resolution logic runs in both paths.
+   * Returns null when the session is missing, expired, or its user
+   * has been hard-deleted.
+   */
+  async validateBearerAndLoadUser(sessionId: string): Promise<AuthenticatedUser | null> {
+    const session = await this.validateSession(sessionId);
+    if (!session) return null;
+    const user = await this.prisma.user.findUnique({
+      where: { id: session.userId },
+      select: {
+        id: true,
+        keycloakId: true,
+        email: true,
+        name: true,
+        avatarUrl: true,
+        isAdmin: true,
+      },
+    });
+    return user as AuthenticatedUser | null;
+  }
 
   /**
    * Create a new session after successful Keycloak authentication.
@@ -19,10 +44,7 @@ export class SessionService {
     refreshToken?: string,
     idToken?: string,
   ): Promise<{ sessionId: string; expiresAt: Date }> {
-    const sessionDurationMinutes = this.config.get<number>(
-      'session.durationMinutes',
-      480,
-    ); // 8 hours default
+    const sessionDurationMinutes = this.config.get<number>('session.durationMinutes', 480); // 8 hours default
 
     const expiresAt = new Date(Date.now() + sessionDurationMinutes * 60 * 1000);
 
@@ -101,10 +123,7 @@ export class SessionService {
     newRefreshToken?: string,
     newIdToken?: string,
   ): Promise<void> {
-    const sessionDurationMinutes = this.config.get<number>(
-      'session.durationMinutes',
-      480,
-    );
+    const sessionDurationMinutes = this.config.get<number>('session.durationMinutes', 480);
     const expiresAt = new Date(Date.now() + sessionDurationMinutes * 60 * 1000);
 
     await this.prisma.session.update({

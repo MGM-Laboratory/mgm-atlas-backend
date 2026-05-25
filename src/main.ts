@@ -7,6 +7,8 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { REDIS_PUB, REDIS_SUB } from './infra/redis/redis.module';
+import { RedisIoAdapter } from './modules/chat/gateway/redis-io.adapter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -48,6 +50,14 @@ async function bootstrap() {
 
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new LoggingInterceptor());
+
+  // Wire the socket.io Redis adapter for the chat gateway. When
+  // REDIS_URL is empty both clients resolve to null and the adapter
+  // falls back to the in-process IoAdapter — the gateway still works
+  // for a single instance.
+  const pub = app.get(REDIS_PUB, { strict: false });
+  const sub = app.get(REDIS_SUB, { strict: false });
+  app.useWebSocketAdapter(new RedisIoAdapter(app, pub, sub));
 
   if (!isProd) {
     const swagger = new DocumentBuilder()
