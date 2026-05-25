@@ -9,7 +9,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import type { Server, Socket } from 'socket.io';
+import type { Namespace, Socket } from 'socket.io';
 import { AuthenticatedUser } from '@/common/types/authenticated-user.type';
 import { SessionService } from '@/modules/auth/session.service';
 import { ProjectAccessService } from '@/modules/projects/project-access.service';
@@ -39,8 +39,11 @@ import { WsSessionGuard } from './ws-session.guard';
 export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(ChatGateway.name);
 
+  // With `namespace: '/chat'`, Nest injects the Namespace here — NOT
+  // the root socket.io Server. We don't call `.of()` on it (that's a
+  // Server method, doesn't exist on Namespace); we use it directly.
   @WebSocketServer()
-  server!: Server;
+  server!: Namespace;
 
   constructor(
     private readonly sessionService: SessionService,
@@ -52,10 +55,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
   // ─── Lifecycle ──────────────────────────────────────────────────────
 
-  afterInit(server: Server): void {
-    // server is fully wired here (post-construct, post-adapter). Hand it
-    // to the publisher so REST controllers can emit through it.
-    this.realtime.attach(server);
+  afterInit(ns: Namespace): void {
+    // `ns` is this gateway's `/chat` namespace (Nest passes the
+    // namespace, not the root Server, when the gateway declares one).
+    // Hand it to the publisher so REST controllers can emit through it.
+    this.realtime.attach(ns);
     this.logger.log('ChatGateway initialised');
   }
 
@@ -82,8 +86,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (!result) return;
     if (result.nowOffline) {
       for (const projectId of result.projects) {
+        // `this.server` is already the `/chat` namespace — emit directly.
         this.server
-          .of('/chat')
           .to(`project:${projectId}`)
           .emit('presence.update', { userId: result.userId, online: false });
       }

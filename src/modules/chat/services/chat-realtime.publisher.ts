@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { Namespace, Server } from 'socket.io';
+import type { Namespace } from 'socket.io';
 import type { ChatChannelPublic } from './chat-channels.service';
 import type { ChatMessagePublic } from './chat-messages.service';
 
@@ -8,9 +8,11 @@ import type { ChatMessagePublic } from './chat-messages.service';
  * call this — never `gateway.server.emit` directly — so the wire
  * shape is defined in one place.
  *
- * The gateway calls `attach(server)` during initialization. Until then,
- * publish calls are silent no-ops (the REST path keeps working, the
- * frontend just falls back to polling).
+ * The gateway calls `attach(ns)` during initialization with its own
+ * `/chat` Namespace (Nest passes the namespace, not the root Server,
+ * to `afterInit` and `@WebSocketServer()` when the gateway declares
+ * `namespace: '/chat'`). Until attached, publish calls are silent
+ * no-ops (REST keeps working; the frontend falls back to polling).
  *
  * Room conventions:
  *   project:{id}  — project-level fanout (channel.created, unread.update, presence)
@@ -21,8 +23,8 @@ export class ChatRealtimePublisher {
   private readonly logger = new Logger(ChatRealtimePublisher.name);
   private ns: Namespace | null = null;
 
-  attach(server: Server): void {
-    this.ns = server.of('/chat');
+  attach(ns: Namespace): void {
+    this.ns = ns;
     this.logger.log('realtime publisher attached');
   }
 
