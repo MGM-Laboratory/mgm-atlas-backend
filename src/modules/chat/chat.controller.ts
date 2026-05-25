@@ -20,6 +20,7 @@ import { ChatChannelsService } from './services/chat-channels.service';
 import { ChatMessagesService } from './services/chat-messages.service';
 import { ChatNotificationsService } from './services/chat-notifications.service';
 import { ChatPinsService } from './services/chat-pins.service';
+import { ChatRealtimePublisher } from './services/chat-realtime.publisher';
 
 /**
  * Project-scoped chat endpoints. Every request resolves access via
@@ -36,6 +37,7 @@ export class ChatController {
     private readonly messages: ChatMessagesService,
     private readonly pins: ChatPinsService,
     private readonly notifications: ChatNotificationsService,
+    private readonly realtime: ChatRealtimePublisher,
   ) {}
 
   // ─── Channels ────────────────────────────────────────────────────────
@@ -55,7 +57,9 @@ export class ChatController {
   ) {
     const { projectId, access } = await this.access.resolve(slugOrId, user);
     this.access.assertManager(access);
-    return this.channels.create(projectId, user, dto);
+    const channel = await this.channels.create(projectId, user, dto);
+    this.realtime.channelCreated(projectId, channel);
+    return channel;
   }
 
   @Patch('channels/:channelId')
@@ -68,7 +72,9 @@ export class ChatController {
     const { projectId, access } = await this.access.resolve(slugOrId, user);
     this.access.assertManager(access);
     await this.assertChannelInProject(channelId, projectId);
-    return this.channels.update(channelId, dto);
+    const channel = await this.channels.update(channelId, dto);
+    this.realtime.channelUpdated(projectId, channel);
+    return channel;
   }
 
   @Post('channels/:channelId/archive')
@@ -80,7 +86,9 @@ export class ChatController {
     const { projectId, access } = await this.access.resolve(slugOrId, user);
     this.access.assertManager(access);
     await this.assertChannelInProject(channelId, projectId);
-    return this.channels.archive(channelId);
+    const channel = await this.channels.archive(channelId);
+    this.realtime.channelArchived(projectId, channelId);
+    return channel;
   }
 
   @Post('channels/:channelId/unarchive')
@@ -92,7 +100,9 @@ export class ChatController {
     const { projectId, access } = await this.access.resolve(slugOrId, user);
     this.access.assertManager(access);
     await this.assertChannelInProject(channelId, projectId);
-    return this.channels.unarchive(channelId);
+    const channel = await this.channels.unarchive(channelId);
+    this.realtime.channelUpdated(projectId, channel);
+    return channel;
   }
 
   // ─── Messages ────────────────────────────────────────────────────────
@@ -122,6 +132,7 @@ export class ChatController {
     await this.assertChannelInProject(channelId, projectId);
 
     const { message, mentions } = await this.messages.create(channelId, projectId, user, dto);
+    this.realtime.messageCreated(channelId, projectId, message, dto.clientMessageId);
     await this.notifications.onMessageCreated({
       projectId,
       channelId,

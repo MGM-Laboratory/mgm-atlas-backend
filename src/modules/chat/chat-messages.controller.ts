@@ -19,6 +19,7 @@ import { ReactMessageDto } from './dto/react-message.dto';
 import { ChatMessagesService } from './services/chat-messages.service';
 import { ChatPinsService } from './services/chat-pins.service';
 import { ChatReactionsService } from './services/chat-reactions.service';
+import { ChatRealtimePublisher } from './services/chat-realtime.publisher';
 
 /**
  * Id-keyed message operations. These don't carry a project slug in the
@@ -35,6 +36,7 @@ export class ChatMessagesController {
     private readonly messages: ChatMessagesService,
     private readonly reactions: ChatReactionsService,
     private readonly pins: ChatPinsService,
+    private readonly realtime: ChatRealtimePublisher,
   ) {}
 
   @Patch(':id')
@@ -46,7 +48,8 @@ export class ChatMessagesController {
     const projectId = await this.resolveProjectIdForMessage(id);
     const { access } = await this.access.resolve(projectId, user);
     this.access.assertInsider(access);
-    const { message } = await this.messages.edit(id, user, dto);
+    const { message, channelId } = await this.messages.edit(id, user, dto);
+    this.realtime.messageEdited(channelId, message);
     return message;
   }
 
@@ -55,7 +58,8 @@ export class ChatMessagesController {
     const projectId = await this.resolveProjectIdForMessage(id);
     const { access } = await this.access.resolve(projectId, user);
     this.access.assertInsider(access);
-    const { message } = await this.messages.delete(id, user, access.isManager);
+    const { message, channelId } = await this.messages.delete(id, user, access.isManager);
+    this.realtime.messageDeleted(channelId, message);
     return message;
   }
 
@@ -68,7 +72,9 @@ export class ChatMessagesController {
     const projectId = await this.resolveProjectIdForMessage(id);
     const { access } = await this.access.resolve(projectId, user);
     this.access.assertInsider(access);
-    return this.reactions.add(id, user.id, dto.emoji);
+    const result = await this.reactions.add(id, user.id, dto.emoji);
+    this.realtime.reactionAdded(result.channelId, result.messageId, result.userId, result.emoji);
+    return result;
   }
 
   @Delete(':id/reactions/:emoji')
@@ -80,7 +86,9 @@ export class ChatMessagesController {
     const projectId = await this.resolveProjectIdForMessage(id);
     const { access } = await this.access.resolve(projectId, user);
     this.access.assertInsider(access);
-    return this.reactions.remove(id, user.id, decodeURIComponent(emoji));
+    const result = await this.reactions.remove(id, user.id, decodeURIComponent(emoji));
+    this.realtime.reactionRemoved(result.channelId, result.messageId, result.userId, result.emoji);
+    return result;
   }
 
   @Post(':id/pin')
@@ -88,7 +96,9 @@ export class ChatMessagesController {
     const projectId = await this.resolveProjectIdForMessage(id);
     const { access } = await this.access.resolve(projectId, user);
     this.access.assertManager(access);
-    return this.pins.pin(id, user.id);
+    const result = await this.pins.pin(id, user.id);
+    this.realtime.pinAdded(result.channelId, id);
+    return result;
   }
 
   @Post(':id/unpin')
@@ -96,7 +106,9 @@ export class ChatMessagesController {
     const projectId = await this.resolveProjectIdForMessage(id);
     const { access } = await this.access.resolve(projectId, user);
     this.access.assertManager(access);
-    return this.pins.unpin(id);
+    const result = await this.pins.unpin(id);
+    this.realtime.pinRemoved(result.channelId, id);
+    return result;
   }
 
   @Post(':id/forward')
@@ -123,6 +135,7 @@ export class ChatMessagesController {
     this.access.assertInsider(targetAccess.access);
 
     const { message } = await this.messages.forward(id, dto.targetChannelId, user);
+    this.realtime.messageCreated(dto.targetChannelId, targetChannel.projectId, message);
     return message;
   }
 
