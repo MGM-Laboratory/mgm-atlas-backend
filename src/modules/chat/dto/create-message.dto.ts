@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsEnum,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -51,6 +52,38 @@ export class MessageAttachmentDto {
   posterUrl?: string;
 }
 
+export class MessageLinkPreviewDto {
+  @IsUrl({ require_tld: true })
+  url!: string;
+
+  @IsIn(['link', 'video', 'gif'])
+  kind!: 'link' | 'video' | 'gif';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(600)
+  description?: string;
+
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  imageUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  siteName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  embedHtml?: string;
+}
+
 export class CreateMessageDto {
   /**
    * GFM markdown source. Server stores it as-is; the renderer sanitizes
@@ -71,6 +104,19 @@ export class CreateMessageDto {
   @ValidateNested({ each: true })
   @Type(() => MessageAttachmentDto)
   attachments?: MessageAttachmentDto[];
+
+  /**
+   * Open Graph previews the sender resolved client-side. Kept distinct
+   * from `attachments` because they aren't S3 uploads — they describe
+   * an inline URL in the markdown that the recipient should render as
+   * a card. Capped at 4 to discourage spam.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(4)
+  @ValidateNested({ each: true })
+  @Type(() => MessageLinkPreviewDto)
+  linkPreviews?: MessageLinkPreviewDto[];
 
   /** Echoed back in the response and on the realtime event so clients can reconcile optimistic sends. */
   @IsOptional()

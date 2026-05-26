@@ -122,6 +122,9 @@ export class ChatMessagesService {
         authorId: user.id,
         markdown: dto.markdown,
         replyToId: dto.replyToId ?? null,
+        metadata: dto.linkPreviews?.length
+          ? ({ linkPreviews: dto.linkPreviews } as unknown as Prisma.InputJsonValue)
+          : undefined,
         attachments: dto.attachments?.length
           ? {
               create: dto.attachments.map((a) => ({
@@ -297,6 +300,8 @@ function extractMentions(markdown: string): string[] {
  */
 function shapeMessage(m: MessageWithIncludes) {
   const isDeleted = !!m.deletedAt;
+  // Metadata is sender-render-time — wipe it on delete same as the body.
+  const metadata = isDeleted ? null : (m.metadata ?? null);
   return {
     id: m.id,
     channelId: m.channelId,
@@ -312,6 +317,7 @@ function shapeMessage(m: MessageWithIncludes) {
       avatarUrl: m.author.avatarUrl,
     },
     markdown: isDeleted ? '' : m.markdown,
+    metadata,
     attachments: isDeleted ? [] : m.attachments,
     reactions: isDeleted ? [] : groupReactions(m.reactions),
     replyTo: m.replyTo
