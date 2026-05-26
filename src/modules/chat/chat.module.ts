@@ -7,6 +7,7 @@ import { AdminStickersController } from './admin-stickers.controller';
 import { ChatController } from './chat.controller';
 import { ChatGifsController } from './chat-gifs.controller';
 import { ChatLinkPreviewController } from './chat-link-preview.controller';
+import { ChatMembersController } from './chat-members.controller';
 import { ChatMessagesController } from './chat-messages.controller';
 import { ChatOverviewController } from './chat-overview.controller';
 import { ChatStickersController } from './chat-stickers.controller';
@@ -44,6 +45,7 @@ import { ChatTypingService } from './services/chat-typing.service';
     ChatOverviewController,
     ChatLinkPreviewController,
     ChatGifsController,
+    ChatMembersController,
     ChatStickersController,
     AdminStickersController,
   ],
