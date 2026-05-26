@@ -10,6 +10,7 @@ import { ChatLinkPreviewController } from './chat-link-preview.controller';
 import { ChatMembersController } from './chat-members.controller';
 import { ChatMessagesController } from './chat-messages.controller';
 import { ChatOverviewController } from './chat-overview.controller';
+import { ChatSearchController } from './chat-search.controller';
 import { ChatStickersController } from './chat-stickers.controller';
 import { ChatGateway } from './gateway/chat.gateway';
 import { WsSessionGuard } from './gateway/ws-session.guard';
@@ -24,6 +25,7 @@ import { ChatPinsService } from './services/chat-pins.service';
 import { ChatPresenceService } from './services/chat-presence.service';
 import { ChatRealtimePublisher } from './services/chat-realtime.publisher';
 import { ChatReactionsService } from './services/chat-reactions.service';
+import { ChatSearchService } from './services/chat-search.service';
 import { ChatStickersService } from './services/chat-stickers.service';
 import { ChatTypingService } from './services/chat-typing.service';
 
@@ -48,6 +50,7 @@ import { ChatTypingService } from './services/chat-typing.service';
     ChatMembersController,
     ChatStickersController,
     AdminStickersController,
+    ChatSearchController,
   ],
   providers: [
     ChatChannelsService,
@@ -63,6 +66,7 @@ import { ChatTypingService } from './services/chat-typing.service';
     ChatGifsService,
     ChatAttachmentsService,
     ChatStickersService,
+    ChatSearchService,
     ChatGateway,
     WsSessionGuard,
   ],
