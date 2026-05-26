@@ -6,6 +6,7 @@ import { ProjectsModule } from '@/modules/projects/projects.module';
 import { ChatController } from './chat.controller';
 import { ChatGifsController } from './chat-gifs.controller';
 import { ChatLinkPreviewController } from './chat-link-preview.controller';
+import { ChatMembersController } from './chat-members.controller';
 import { ChatMessagesController } from './chat-messages.controller';
 import { ChatOverviewController } from './chat-overview.controller';
 import { ChatGateway } from './gateway/chat.gateway';
@@ -41,6 +42,7 @@ import { ChatTypingService } from './services/chat-typing.service';
     ChatOverviewController,
     ChatLinkPreviewController,
     ChatGifsController,
+    ChatMembersController,
   ],
   providers: [
     ChatChannelsService,
