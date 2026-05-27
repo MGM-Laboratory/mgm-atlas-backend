@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
 import { PmoFeatureFlagGuard } from './guards/pmo-feature-flag.guard';
+import { TaskListsModule } from './task-lists/task-lists.module';
 
 /**
- * Root PMO module. Submodules (task-lists, tasks, task-comments,
- * task-attachments, files, notes, whiteboards, yjs) are added one per
- * phase starting at Phase 1. The feature-flag guard is exported so each
- * future submodule can pull it into its controllers.
+ * Root PMO module. Submodules are added one per phase as features ship.
+ * The feature-flag guard is exported so each submodule's controllers
+ * can apply it; whenever PMO_ENABLED is false every PMO route 404s.
  */
 @Module({
+  imports: [TaskListsModule],
   providers: [PmoFeatureFlagGuard],
   exports: [PmoFeatureFlagGuard],
 })
