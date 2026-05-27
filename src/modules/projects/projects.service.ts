@@ -67,13 +67,25 @@ export class ProjectsService {
           internalLinks: dto.internalLinks as Prisma.InputJsonValue | undefined,
           ownerId: user.id,
           publishedAt: new Date(),
-          tags: dto.tagIds?.length
-            ? { create: dto.tagIds.map((tagId) => ({ tagId })) }
-            : undefined,
+          tags: dto.tagIds?.length ? { create: dto.tagIds.map((tagId) => ({ tagId })) } : undefined,
         },
       });
       await tx.projectMember.create({
         data: { projectId: project.id, userId: user.id, role: 'PROJECT_MANAGER' },
+      });
+      // Auto-create the project's #general chat channel. Inlined here
+      // (rather than calling ChatChannelsService) to avoid a circular
+      // dependency between ProjectsModule and ChatModule. The partial
+      // unique index on (projectId) WHERE isGeneral guarantees there
+      // can never be more than one #general per project.
+      await tx.chatChannel.create({
+        data: {
+          projectId: project.id,
+          name: 'general',
+          slug: 'general',
+          isGeneral: true,
+          createdById: user.id,
+        },
       });
       return project;
     });
@@ -194,7 +206,11 @@ export class ProjectsService {
         project: this.shapeCard(r.project),
       })),
       rows: [
-        { key: 'recruiting', label: 'Currently recruiting', items: recruiting.map((p) => this.shapeCard(p)) },
+        {
+          key: 'recruiting',
+          label: 'Currently recruiting',
+          items: recruiting.map((p) => this.shapeCard(p)),
+        },
         { key: 'recent', label: 'New this month', items: recent.map((p) => this.shapeCard(p)) },
         { key: 'shipped', label: 'Shipped projects', items: shipped.map((p) => this.shapeCard(p)) },
       ].filter((row) => row.items.length > 0),
@@ -258,10 +274,7 @@ export class ProjectsService {
   private visibilityClause(user: AuthenticatedUser): Prisma.ProjectWhereInput {
     if (user.isAdmin) return {};
     return {
-      OR: [
-        { visibility: ProjectVisibility.PUBLIC },
-        { members: { some: { userId: user.id } } },
-      ],
+      OR: [{ visibility: ProjectVisibility.PUBLIC }, { members: { some: { userId: user.id } } }],
     };
   }
 
@@ -378,7 +391,12 @@ export class ProjectsService {
         role: m.role,
         title: m.title,
         joinedAt: m.joinedAt,
-        user: { id: m.user.id, name: m.user.name, email: m.user.email, avatarUrl: m.user.avatarUrl },
+        user: {
+          id: m.user.id,
+          name: m.user.name,
+          email: m.user.email,
+          avatarUrl: m.user.avatarUrl,
+        },
       })),
       pendingRequestCount: access.isManager ? project._count.contributionRequests : undefined,
       ownerEmail: project.owner.email,

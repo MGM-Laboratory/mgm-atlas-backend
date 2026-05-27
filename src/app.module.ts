@@ -17,7 +17,9 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { MailerModule } from './modules/mailer/mailer.module';
 import { HealthModule } from './modules/health/health.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { ChatModule } from './modules/chat/chat.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
+import { RedisModule } from './infra/redis/redis.module';
 
 @Module({
   imports: [
@@ -36,6 +38,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
       ],
     }),
     PrismaModule,
+    RedisModule,
     MailerModule,
     WebhooksModule,
     AuthModule,
@@ -47,6 +50,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     TeamModule,
     NotificationsModule,
     AdminModule,
+    ChatModule,
     HealthModule,
   ],
   providers: [

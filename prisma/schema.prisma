@@ -58,6 +58,28 @@ enum NotificationType {
   PROJECT_INVITED
   PROJECT_ROLE_CHANGED
   PROJECT_REMOVED
+  CHAT_MENTION
+}
+
+// ─── Chat enums ──────────────────────────────────────────────────────────
+
+enum ChatMessageKind {
+  TEXT
+  SYSTEM_CHANNEL_CREATED
+  SYSTEM_CHANNEL_RENAMED
+  SYSTEM_PINNED
+}
+
+enum ChatAttachmentKind {
+  IMAGE
+  VIDEO
+  AUDIO
+  FILE
+}
+
+enum ChatDeleteActor {
+  SELF
+  MODERATOR
 }
 
 // ─── Identity ────────────────────────────────────────────────────────────
@@ -83,9 +105,36 @@ model User {
   invitedSent          ProjectInvite[]        @relation("InvitedBy")
   bookmarks            Bookmark[]
   featuredAssignments  FeaturedProject[]      @relation("FeaturedBy")
+  sessions             Session[]
+  chatChannelsCreated  ChatChannel[]          @relation("ChatChannelCreator")
+  chatChannelMembers   ChatChannelMember[]
+  chatMessages         ChatMessage[]          @relation("ChatMessageAuthor")
+  chatMessagesDeleted  ChatMessage[]          @relation("ChatMessageDeleter")
+  chatReactions        ChatReaction[]
+  chatPins             ChatPinned[]           @relation("ChatPinnedBy")
+  stickerPacksCreated  StickerPack[]          @relation("StickerPackCreator")
 
   @@index([email])
   @@index([isAdmin])
+}
+
+// ─── Sessions (database-backed, no cookies) ───────────────────────────────
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  accessToken  String
+  refreshToken String?
+  idToken      String?
+  
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // ─── Tags ────────────────────────────────────────────────────────────────
@@ -137,6 +186,7 @@ model Project {
   invites              ProjectInvite[]
   featured             FeaturedProject?
   bookmarks            Bookmark[]
+  chatChannels         ChatChannel[]
 
   @@index([visibility, phase])
   @@index([ownerId])
@@ -312,4 +362,193 @@ model WebhookDelivery {
 
   @@index([event, succeeded])
   @@index([createdAt])
+}
+
+// ─── Chat ────────────────────────────────────────────────────────────────
+// Realtime project chat. Channels are project-scoped; every project gets
+// an auto-created `#general` (isGeneral = true). Visibility is enforced
+// at the application layer via ProjectAccessService — only insiders
+// (admin / project manager / contributor) may read or write.
+
+model ChatChannel {
+  id          String    @id @default(uuid())
+  projectId   String
+  name        String
+  slug        String
+  topic       String?
+  isGeneral   Boolean   @default(false)
+  isArchived  Boolean   @default(false)
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  archivedAt  DateTime?
+
+  project   Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User                @relation("ChatChannelCreator", fields: [createdById], references: [id])
+  messages  ChatMessage[]
+  members   ChatChannelMember[]
+  pinned    ChatPinned[]
+
+  @@unique([projectId, name])
+  @@index([projectId, isArchived])
+}
+
+model ChatChannelMember {
+  id                String    @id @default(uuid())
+  channelId         String
+  userId            String
+  lastReadAt        DateTime?
+  lastReadMessageId String?
+  muted             Boolean   @default(false)
+  joinedAt          DateTime  @default(now())
+
+  channel ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+  @@index([userId, channelId])
+}
+
+model ChatMessage {
+  id                String           @id @default(uuid())
+  channelId         String
+  authorId          String
+  kind              ChatMessageKind  @default(TEXT)
+  /// Canonical GFM markdown source. Never store HTML; renderer sanitizes at read time.
+  markdown          String
+  replyToId         String?
+  forwardedFromId   String?
+  editedAt          DateTime?
+  deletedAt         DateTime?
+  deletedByUserId   String?
+  deletedActor      ChatDeleteActor?
+  /// Sender-side render metadata that doesn't belong in the core shape.
+  /// Currently holds attached link previews: { linkPreviews: ChatLinkPreviewInline[] }.
+  metadata          Json?
+  createdAt         DateTime         @default(now())
+
+  channel       ChatChannel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author        User             @relation("ChatMessageAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  deletedBy     User?            @relation("ChatMessageDeleter", fields: [deletedByUserId], references: [id])
+  replyTo       ChatMessage?     @relation("ChatMessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies       ChatMessage[]    @relation("ChatMessageReply")
+  forwardedFrom ChatMessage?     @relation("ChatMessageForward", fields: [forwardedFromId], references: [id], onDelete: SetNull)
+  forwards      ChatMessage[]    @relation("ChatMessageForward")
+  attachments   ChatAttachment[]
+  reactions     ChatReaction[]
+  pins          ChatPinned[]
+
+  // tsvector + GIN index + UPDATE trigger added by raw SQL migration —
+  // not modeled here because Prisma can't express tsvector. Search reads
+  // hit the column directly via `$queryRaw`.
+
+  @@index([channelId, createdAt])
+  @@index([authorId, createdAt])
+}
+
+model ChatAttachment {
+  id          String             @id @default(uuid())
+  messageId   String
+  kind        ChatAttachmentKind
+  url         String
+  s3Key       String
+  mime        String
+  bytes       Int
+  width       Int?
+  height      Int?
+  durationSec Float?
+  posterUrl   String?
+  createdAt   DateTime           @default(now())
+
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+model ChatReaction {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  /// Unicode emoji (normalized client-side). Not a shortcode.
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+}
+
+model ChatPinned {
+  id          String   @id @default(uuid())
+  channelId   String
+  messageId   String
+  pinnedById  String
+  position    Int      @default(0)
+  pinnedAt    DateTime @default(now())
+  /// Optional manager-supplied context note shown alongside the pinned message.
+  note        String?
+
+  channel  ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  message  ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  pinnedBy User        @relation("ChatPinnedBy", fields: [pinnedById], references: [id])
+
+  @@unique([channelId, messageId])
+  @@index([channelId, position])
+}
+
+model ChatLinkPreview {
+  id          String   @id @default(uuid())
+  /// sha256 hex of the canonicalized URL.
+  urlHash     String   @unique
+  url         String
+  title       String?
+  description String?
+  imageUrl    String?
+  siteName    String?
+  /// oEmbed iframe HTML when the source supports it (YouTube/Vimeo etc.).
+  embedHtml   String?
+  /// 'link' | 'video' | 'gif'.
+  kind        String   @default("link")
+  fetchedAt   DateTime @default(now())
+  expiresAt   DateTime
+
+  @@index([expiresAt])
+}
+
+// ─── Stickers (admin-managed global library) ─────────────────────────────
+
+model StickerPack {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?
+  isArchived  Boolean  @default(false)
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User      @relation("StickerPackCreator", fields: [createdById], references: [id])
+  stickers  Sticker[]
+
+  @@index([isArchived])
+}
+
+model Sticker {
+  id        String   @id @default(uuid())
+  packId    String
+  name      String
+  keywords  String[] @default([])
+  s3Key     String
+  url       String
+  mime      String
+  width     Int?
+  height    Int?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  pack StickerPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+
+  @@index([packId, position])
 }

@@ -21,7 +21,10 @@ export class ProjectAccessService {
    * project does not exist (or has been hard-deleted) and 403 if the user
    * lacks even baseline visibility on a private project.
    */
-  async resolve(slugOrId: string, user: AuthenticatedUser): Promise<{ projectId: string; access: ProjectAccess }> {
+  async resolve(
+    slugOrId: string,
+    user: AuthenticatedUser,
+  ): Promise<{ projectId: string; access: ProjectAccess }> {
     const project = await this.prisma.project.findFirst({
       where: {
         deletedAt: null,
@@ -71,5 +74,10 @@ export class ProjectAccessService {
   /** Throws ForbiddenException if the user is not a manager (admins always pass). */
   assertManager(access: ProjectAccess) {
     if (!access.isManager) throw new ForbiddenException('Project Manager role required.');
+  }
+
+  /** Throws ForbiddenException if the user has no membership on the project (admins always pass). */
+  assertInsider(access: ProjectAccess) {
+    if (!access.isInsider) throw new ForbiddenException('Project membership required.');
   }
 }
