@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PmoFeatureFlagGuard } from './guards/pmo-feature-flag.guard';
 import { TaskListsModule } from './task-lists/task-lists.module';
+import { TasksModule } from './tasks/tasks.module';
 
 /**
  * Root PMO module. Submodules are added one per phase as features ship.
@@ -8,7 +9,7 @@ import { TaskListsModule } from './task-lists/task-lists.module';
  * can apply it; whenever PMO_ENABLED is false every PMO route 404s.
  */
 @Module({
-  imports: [TaskListsModule],
+  imports: [TaskListsModule, TasksModule],
   providers: [PmoFeatureFlagGuard],
   exports: [PmoFeatureFlagGuard],
 })

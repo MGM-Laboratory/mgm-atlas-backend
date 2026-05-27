@@ -14,6 +14,7 @@ import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@/common/types/authenticated-user.type';
 import { ProjectAccessService } from '@/modules/projects/project-access.service';
 import { PmoFeatureFlagGuard } from '../guards/pmo-feature-flag.guard';
+import { BulkUpdateStatusesDto } from '../tasks/dto/bulk-update-statuses.dto';
 import { CreateTaskListDto } from './dto/create-task-list.dto';
 import { ReorderTabsDto } from './dto/reorder-tabs.dto';
 import { ReorderTaskListsDto } from './dto/reorder-task-lists.dto';
@@ -128,5 +129,17 @@ export class TaskListsController {
     const { projectId, access } = await this.access.resolve(slug, user);
     this.access.assertManager(access);
     return this.lists.reorderTabs(projectId, listId, dto);
+  }
+
+  @Patch('projects/:slug/task-lists/:listId/statuses')
+  async updateStatuses(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+    @Param('listId', ParseUUIDPipe) listId: string,
+    @Body() dto: BulkUpdateStatusesDto,
+  ) {
+    const { projectId, access } = await this.access.resolve(slug, user);
+    this.access.assertManager(access);
+    return this.lists.updateStatuses(projectId, listId, dto);
   }
 }
