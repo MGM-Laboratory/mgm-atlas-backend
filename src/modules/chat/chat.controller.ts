@@ -172,6 +172,23 @@ export class ChatController {
     return this.pins.list(channelId);
   }
 
+  /**
+   * Per-user read state for a channel. The frontend hits this on each
+   * channel-open to freeze the "unread cutoff" before any /read POST
+   * fires, which is what drives the in-thread New-messages divider.
+   */
+  @Get('channels/:channelId/state')
+  async channelState(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slugOrId') slugOrId: string,
+    @Param('channelId') channelId: string,
+  ) {
+    const { projectId, access } = await this.access.resolve(slugOrId, user);
+    this.access.assertInsider(access);
+    await this.assertChannelInProject(channelId, projectId);
+    return this.channels.getMemberState(channelId, user.id);
+  }
+
   // ─── Attachments ─────────────────────────────────────────────────────
 
   /**
