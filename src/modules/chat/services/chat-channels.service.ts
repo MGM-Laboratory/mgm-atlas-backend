@@ -112,6 +112,24 @@ export class ChatChannelsService {
     });
   }
 
+  /**
+   * Read-only snapshot of the requesting user's membership state. Used by
+   * the frontend on channel entry to freeze the "unread cutoff" so the
+   * New-messages divider doesn't move as the session continues reading.
+   * Returns nulls when the user has never read the channel — that's
+   * fine: every visible message then counts as unread.
+   */
+  async getMemberState(channelId: string, userId: string) {
+    const row = await this.prisma.chatChannelMember.findUnique({
+      where: { channelId_userId: { channelId, userId } },
+      select: { lastReadMessageId: true, lastReadAt: true },
+    });
+    return {
+      lastReadMessageId: row?.lastReadMessageId ?? null,
+      lastReadAt: row?.lastReadAt ?? null,
+    };
+  }
+
   /** Lazily create the (channel, user) row used to track read state and mute. */
   async ensureMembership(channelId: string, userId: string) {
     return this.prisma.chatChannelMember.upsert({
