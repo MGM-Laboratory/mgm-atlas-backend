@@ -16,6 +16,10 @@ import { CreateTaskListDto } from './dto/create-task-list.dto';
 import { UpdateTaskListDto } from './dto/update-task-list.dto';
 import { ReorderTabsDto } from './dto/reorder-tabs.dto';
 import { ReorderTaskListsDto } from './dto/reorder-task-lists.dto';
+import {
+  BulkUpdateStatusesDto,
+  StatusEntryDto,
+} from '../tasks/dto/bulk-update-statuses.dto';
 
 export type TaskListWithRelations = TaskList & {
   statuses: TaskStatus[];
@@ -194,6 +198,124 @@ export class TaskListsService {
     }
     await this.prisma.$transaction(updates);
     return this.get(projectId, listId);
+  }
+
+  /**
+   * Apply a full status set to a TaskList in one transaction.
+   *
+   * - Entries with `id` set update an existing status.
+   * - Entries without `id` create a new one.
+   * - Existing statuses absent from the payload are deleted; their
+   *   tasks (if any) move to `moveTasksTo` first.
+   * - Exactly one entry ends up as `isDefault: true` — if none flagged,
+   *   the first entry wins. The default status is what new tasks land
+   *   in when a creator doesn't pick one explicitly.
+   * - Order matches the array position.
+   *
+   * Postgres can't reorder rows under `@@unique([taskListId, order])` in
+   * place, so we shift existing orders into a temporary high range
+   * (10_000+) first, then write the final orders. Atomic from the
+   * caller's perspective (single $transaction).
+   */
+  async updateStatuses(
+    projectId: string,
+    listId: string,
+    dto: BulkUpdateStatusesDto,
+  ): Promise<TaskListWithRelations> {
+    await this.assertExists(projectId, listId);
+
+    const currentStatuses = await this.prisma.taskStatus.findMany({
+      where: { taskListId: listId },
+      orderBy: { order: 'asc' },
+    });
+    const currentById = new Map(currentStatuses.map((s) => [s.id, s]));
+
+    // Validate: every id in the payload must match an existing status in
+    // this list. Stops a crafted payload from updating statuses elsewhere.
+    for (const entry of dto.statuses) {
+      if (entry.id && !currentById.has(entry.id)) {
+        throw new BadRequestException(`Status ${entry.id} not found in this list.`);
+      }
+    }
+
+    // Determine deletions.
+    const keepIds = new Set(dto.statuses.filter((e) => e.id).map((e) => e.id!));
+    const toDelete = currentStatuses.filter((s) => !keepIds.has(s.id));
+    if (toDelete.length > 0) {
+      const tasksReferencingDeleted = await this.prisma.task.count({
+        where: { statusId: { in: toDelete.map((s) => s.id) }, deletedAt: null },
+      });
+      if (tasksReferencingDeleted > 0) {
+        if (!dto.moveTasksTo) {
+          throw new BadRequestException(
+            'Deleting a status with tasks requires moveTasksTo set to a kept status.',
+          );
+        }
+        if (!keepIds.has(dto.moveTasksTo)) {
+          throw new BadRequestException('moveTasksTo must reference a kept status.');
+        }
+      }
+    }
+
+    // Resolve which entry is default.
+    const defaultIndex = (() => {
+      const explicit = dto.statuses.findIndex((e) => e.isDefault === true);
+      return explicit === -1 ? 0 : explicit;
+    })();
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Move tasks off about-to-delete statuses.
+      if (toDelete.length > 0 && dto.moveTasksTo) {
+        await tx.task.updateMany({
+          where: { statusId: { in: toDelete.map((s) => s.id) } },
+          data: { statusId: dto.moveTasksTo },
+        });
+      }
+
+      // 2. Shift existing statuses to a high temporary order range so we
+      //    can rewrite the final orders without bumping into the
+      //    @@unique constraint.
+      for (let i = 0; i < currentStatuses.length; i++) {
+        await tx.taskStatus.update({
+          where: { id: currentStatuses[i]!.id },
+          data: { order: 10_000 + i, isDefault: false },
+        });
+      }
+
+      // 3. Delete removed statuses (now safely out of the constraint).
+      if (toDelete.length > 0) {
+        await tx.taskStatus.deleteMany({
+          where: { id: { in: toDelete.map((s) => s.id) } },
+        });
+      }
+
+      // 4. Apply the final set in order.
+      const written: { id: string; entry: StatusEntryDto }[] = [];
+      for (let i = 0; i < dto.statuses.length; i++) {
+        const entry = dto.statuses[i]!;
+        const data = {
+          name: entry.name,
+          color: entry.color ?? 'neutral',
+          category: entry.category ?? 'TODO',
+          order: i,
+          isDefault: i === defaultIndex,
+        } as const;
+        if (entry.id) {
+          await tx.taskStatus.update({ where: { id: entry.id }, data });
+          written.push({ id: entry.id, entry });
+        } else {
+          const created = await tx.taskStatus.create({
+            data: { ...data, taskListId: listId },
+          });
+          written.push({ id: created.id, entry });
+        }
+      }
+
+      return tx.taskList.findUniqueOrThrow({
+        where: { id: listId },
+        include: this.relationInclude(),
+      });
+    });
   }
 
   // ─── private helpers ────────────────────────────────────────────────
