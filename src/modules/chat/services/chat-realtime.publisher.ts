@@ -74,8 +74,8 @@ export class ChatRealtimePublisher {
 
   // ─── Pins ──────────────────────────────────────────────────────────
 
-  pinAdded(channelId: string, messageId: string): void {
-    this.emit(this.channelRoom(channelId), 'pin.added', { messageId });
+  pinAdded(channelId: string, messageId: string, note: string | null = null): void {
+    this.emit(this.channelRoom(channelId), 'pin.added', { messageId, note });
   }
 
   pinRemoved(channelId: string, messageId: string): void {

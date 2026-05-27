@@ -15,6 +15,7 @@ import { ProjectAccessService } from '@/modules/projects/project-access.service'
 import { PrismaService } from '@/prisma/prisma.service';
 import { EditMessageDto } from './dto/edit-message.dto';
 import { ForwardMessageDto } from './dto/forward-message.dto';
+import { PinMessageDto } from './dto/pin-message.dto';
 import { ReactMessageDto } from './dto/react-message.dto';
 import { ChatMessagesService } from './services/chat-messages.service';
 import { ChatPinsService } from './services/chat-pins.service';
@@ -92,12 +93,16 @@ export class ChatMessagesController {
   }
 
   @Post(':id/pin')
-  async pin(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+  async pin(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: PinMessageDto = {},
+  ) {
     const projectId = await this.resolveProjectIdForMessage(id);
     const { access } = await this.access.resolve(projectId, user);
     this.access.assertManager(access);
-    const result = await this.pins.pin(id, user.id);
-    this.realtime.pinAdded(result.channelId, id);
+    const result = await this.pins.pin(id, user.id, dto.note);
+    this.realtime.pinAdded(result.channelId, id, result.note ?? null);
     return result;
   }
 

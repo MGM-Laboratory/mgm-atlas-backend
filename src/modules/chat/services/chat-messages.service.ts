@@ -45,6 +45,11 @@ const MESSAGE_INCLUDE = {
       author: { select: { id: true, name: true } },
     },
   },
+  pins: {
+    select: { id: true, note: true, pinnedAt: true },
+    orderBy: { pinnedAt: 'desc' },
+    take: 1,
+  },
 } satisfies Prisma.ChatMessageInclude;
 
 type MessageWithIncludes = Prisma.ChatMessageGetPayload<{ include: typeof MESSAGE_INCLUDE }>;
@@ -302,6 +307,7 @@ function shapeMessage(m: MessageWithIncludes) {
   const isDeleted = !!m.deletedAt;
   // Metadata is sender-render-time — wipe it on delete same as the body.
   const metadata = isDeleted ? null : (m.metadata ?? null);
+  const pin = m.pins && m.pins.length > 0 ? m.pins[0] : null;
   return {
     id: m.id,
     channelId: m.channelId,
@@ -335,6 +341,8 @@ function shapeMessage(m: MessageWithIncludes) {
           author: m.forwardedFrom.author,
         }
       : null,
+    isPinned: !isDeleted && !!pin,
+    pinNote: !isDeleted && pin ? pin.note : null,
   };
 }
 
