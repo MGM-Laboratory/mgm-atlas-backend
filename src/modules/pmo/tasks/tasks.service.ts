@@ -85,6 +85,55 @@ export class TasksService {
     return task;
   }
 
+  /// Paginated activity feed for a task. Newest first. Each row carries
+  /// its actor (id/name/avatar) for the popup's feed; loosely modeled on
+  /// GitHub's timeline events. Phase 11 may add filtering by kind.
+  async listActivity(
+    projectId: string,
+    taskId: string,
+    page = 1,
+    pageSize = 50,
+  ): Promise<{
+    items: Array<{
+      id: string;
+      kind: string;
+      payload: unknown;
+      createdAt: Date;
+      actor: { id: string; name: string; avatarUrl: string | null } | null;
+    }>;
+    total: number;
+    page: number;
+    pageSize: number;
+  }> {
+    // Reuse get() to enforce existence + scope so a crafted taskId can't
+    // leak activity from another project.
+    await this.get(projectId, taskId);
+    const [rows, total] = await Promise.all([
+      this.prisma.taskActivity.findMany({
+        where: { taskId },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          actor: { select: { id: true, name: true, avatarUrl: true } },
+        },
+      }),
+      this.prisma.taskActivity.count({ where: { taskId } }),
+    ]);
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        payload: r.payload,
+        createdAt: r.createdAt,
+        actor: r.actor,
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
   // ─── Mutations ──────────────────────────────────────────────────────
 
   /// Create a task. Mints `key` atomically by bumping TaskList.taskCounter
