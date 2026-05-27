@@ -16,7 +16,7 @@
 
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
-import { setupWSConnection } from 'y-websocket/bin/utils.js';
+import { setupWSConnection } from 'y-websocket/bin/utils';
 
 const port = Number(process.env.PORT ?? 1234);
 
