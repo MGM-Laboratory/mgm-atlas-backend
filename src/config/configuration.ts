@@ -80,4 +80,29 @@ export default () => ({
     maxAttachmentBytes: parseInt(process.env.CHAT_MAX_ATTACHMENT_BYTES ?? '52428800', 10),
     editWindowHours: parseInt(process.env.CHAT_EDIT_WINDOW_HOURS ?? '24', 10),
   },
+  pmo: {
+    // Global kill switch. Off by default so the foundation ships dark.
+    enabled: (process.env.PMO_ENABLED ?? 'false').toLowerCase() === 'true',
+    maxTasksPerList: parseInt(process.env.PMO_MAX_TASKS_PER_LIST ?? '2000', 10),
+    maxListsPerProject: parseInt(process.env.PMO_MAX_LISTS_PER_PROJECT ?? '50', 10),
+    maxNotesPerProject: parseInt(process.env.PMO_MAX_NOTES_PER_PROJECT ?? '500', 10),
+    maxWhiteboardsPerProject: parseInt(process.env.PMO_MAX_WHITEBOARDS_PER_PROJECT ?? '100', 10),
+    maxTabsPerList: parseInt(process.env.PMO_MAX_TABS_PER_LIST ?? '20', 10),
+    fileMaxBytes: parseInt(process.env.PMO_FILE_MAX_BYTES ?? '52428800', 10),
+    /// Comma-separated MIME allowlist, or '*' for any.
+    fileAllowedMime: (process.env.PMO_FILE_ALLOWED_MIME ?? '*')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  },
+  yjs: {
+    // Public URL the frontend connects to. Empty = collab disabled, notes
+    // and whiteboards stay in single-user-edit mode with a warning toast.
+    publicWsUrl: process.env.YJS_PUBLIC_WS_URL ?? '',
+    // Shared HMAC secret used by the y-websocket sidecar to call our
+    // POST /internal/yjs/authorize and POST /internal/yjs/snapshot.
+    internalAuthSecret: process.env.YJS_INTERNAL_AUTH_SECRET ?? '',
+    // How long after the last edit before the sidecar pushes a snapshot.
+    snapshotDebounceMs: parseInt(process.env.YJS_SNAPSHOT_DEBOUNCE_MS ?? '30000', 10),
+  },
 });
