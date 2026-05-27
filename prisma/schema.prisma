@@ -487,6 +487,8 @@ model ChatPinned {
   pinnedById  String
   position    Int      @default(0)
   pinnedAt    DateTime @default(now())
+  /// Optional manager-supplied context note shown alongside the pinned message.
+  note        String?
 
   channel  ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
   message  ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)

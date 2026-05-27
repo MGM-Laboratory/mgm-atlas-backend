@@ -22,7 +22,7 @@ export class ChatPinsService {
     });
   }
 
-  async pin(messageId: string, pinnedById: string) {
+  async pin(messageId: string, pinnedById: string, note?: string | null) {
     const message = await this.prisma.chatMessage.findFirst({
       where: { id: messageId, deletedAt: null },
       select: { id: true, channelId: true, channel: { select: { projectId: true } } },
@@ -37,6 +37,8 @@ export class ChatPinsService {
     });
     const nextPosition = (last?.position ?? -1) + 1;
 
+    const trimmedNote = typeof note === 'string' ? note.trim() : '';
+
     try {
       const pin = await this.prisma.chatPinned.create({
         data: {
@@ -44,9 +46,15 @@ export class ChatPinsService {
           messageId,
           pinnedById,
           position: nextPosition,
+          note: trimmedNote.length > 0 ? trimmedNote : null,
         },
       });
-      return { pin, channelId: message.channelId, projectId: message.channel.projectId };
+      return {
+        pin,
+        channelId: message.channelId,
+        projectId: message.channel.projectId,
+        note: pin.note,
+      };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new ConflictException('Message is already pinned.');
