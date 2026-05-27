@@ -75,6 +75,17 @@ export class TasksController {
     return this.tasks.get(projectId, taskId);
   }
 
+  @Get('projects/:slug/tasks/:taskId/activity')
+  async activity(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+    @Param('taskId', ParseUUIDPipe) taskId: string,
+  ) {
+    const { projectId, access } = await this.access.resolve(slug, user);
+    this.access.assertInsider(access);
+    return this.tasks.listActivity(projectId, taskId);
+  }
+
   @Post('projects/:slug/task-lists/:listId/tasks')
   async create(
     @CurrentUser() user: AuthenticatedUser,
