@@ -18,3 +18,32 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+
+  # Yjs sync sidecar for PMO notes + whiteboards collab. Phase 0 ships a
+  # stub server; auth-callback wiring lands in Phase 8. The backend boots
+  # fine without this container, so it can be added to the running stack
+  # at any time without coordination.
+  atlas-y-websocket:
+    image: labmgm/atlas-y-websocket:latest
+    container_name: atlas-y-websocket
+    restart: always
+    environment:
+      PORT: 1234
+      # Filled in Phase 8 — used to verify HMAC headers from the backend
+      # on the auth/snapshot callbacks. Empty in Phase 0 is fine; the
+      # stub server doesn't read it yet.
+      YJS_INTERNAL_AUTH_SECRET: ${YJS_INTERNAL_AUTH_SECRET:-}
+      ATLAS_BACKEND_BASE_URL: ${APP_BASE_URL}/api/v1
+    ports:
+      - "${YJS_HOST_PORT:-1234}:1234"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:1234/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
