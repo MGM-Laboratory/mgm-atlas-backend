@@ -18,6 +18,7 @@ import {
   ProjectAccessService,
 } from '@/modules/projects/project-access.service';
 import { PmoFeatureFlagGuard } from '../guards/pmo-feature-flag.guard';
+import { CreateDependencyDto } from './dto/create-dependency.dto';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { ListTasksQueryDto } from './dto/list-tasks.dto';
 import { MoveTaskDto } from './dto/move-task.dto';
@@ -153,5 +154,42 @@ export class TasksController {
     const { projectId, access } = await this.access.resolve(slug, user);
     this.access.assertInsider(access);
     return this.tasks.softDelete(user, asInsiderKind(access), projectId, taskId);
+  }
+
+  // ─── Gantt + dependencies ────────────────────────────────────────
+
+  @Get('projects/:slug/task-lists/:listId/gantt')
+  async gantt(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+    @Param('listId', ParseUUIDPipe) listId: string,
+  ) {
+    const { projectId, access } = await this.access.resolve(slug, user);
+    this.access.assertInsider(access);
+    return this.tasks.gantt(projectId, listId);
+  }
+
+  @Post('projects/:slug/tasks/:taskId/dependencies')
+  async addDependency(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+    @Param('taskId', ParseUUIDPipe) taskId: string,
+    @Body() dto: CreateDependencyDto,
+  ) {
+    const { projectId, access } = await this.access.resolve(slug, user);
+    this.access.assertInsider(access);
+    return this.tasks.addDependency(user, projectId, taskId, dto);
+  }
+
+  @Delete('projects/:slug/tasks/:taskId/dependencies/:depId')
+  async removeDependency(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+    @Param('taskId', ParseUUIDPipe) taskId: string,
+    @Param('depId', ParseUUIDPipe) depId: string,
+  ) {
+    const { projectId, access } = await this.access.resolve(slug, user);
+    this.access.assertInsider(access);
+    return this.tasks.removeDependency(user, projectId, taskId, depId);
   }
 }

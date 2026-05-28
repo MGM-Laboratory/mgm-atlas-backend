@@ -11,6 +11,7 @@ import {
   Task,
   TaskActivityKind,
   TaskAssignee,
+  TaskDependencyKind,
   TaskPriority,
   TaskStatus,
   TaskStatusCategory,
@@ -525,5 +526,145 @@ export class TasksService {
       },
       status: true,
     } as const;
+  }
+
+  // ─── Gantt + dependencies ──────────────────────────────────────────
+
+  /// Lightweight projection for the gantt view: every non-archived,
+  /// non-deleted task in the list plus its outgoing dependencies. We
+  /// keep the shape narrow so a 200-task list doesn't ship 100 KB of
+  /// rich-text descriptions to the browser.
+  async gantt(
+    projectId: string,
+    listId: string,
+  ): Promise<{
+    tasks: Array<{
+      id: string;
+      key: string;
+      title: string;
+      statusId: string;
+      statusName: string;
+      statusCategory: TaskStatusCategory;
+      startDate: Date | null;
+      dueDate: Date | null;
+      completedAt: Date | null;
+      assignees: Array<{ id: string; name: string; avatarUrl: string | null }>;
+    }>;
+    dependencies: Array<{
+      id: string;
+      fromTaskId: string;
+      toTaskId: string;
+      kind: TaskDependencyKind;
+    }>;
+  }> {
+    await this.assertListExists(projectId, listId);
+
+    const rows = await this.prisma.task.findMany({
+      where: { taskListId: listId, projectId, deletedAt: null, archivedAt: null },
+      orderBy: [{ startDate: 'asc' }, { dueDate: 'asc' }, { createdAt: 'asc' }],
+      include: {
+        assignees: {
+          include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+        },
+        status: { select: { id: true, name: true, category: true } },
+      },
+    });
+    const taskIds = rows.map((t) => t.id);
+    const deps =
+      taskIds.length === 0
+        ? []
+        : await this.prisma.taskDependency.findMany({
+            where: { fromTaskId: { in: taskIds } },
+          });
+
+    return {
+      tasks: rows.map((t) => ({
+        id: t.id,
+        key: t.key,
+        title: t.title,
+        statusId: t.statusId,
+        statusName: t.status.name,
+        statusCategory: t.status.category,
+        startDate: t.startDate,
+        dueDate: t.dueDate,
+        completedAt: t.completedAt,
+        assignees: t.assignees.map((a) => a.user),
+      })),
+      dependencies: deps.map((d) => ({
+        id: d.id,
+        fromTaskId: d.fromTaskId,
+        toTaskId: d.toTaskId,
+        kind: d.kind,
+      })),
+    };
+  }
+
+  /// Add a dependency from `:taskId` → `dto.toTaskId`. Both tasks must
+  /// belong to the same project (no cross-project links) AND the same
+  /// list (gantt is per-list in Phase 5; cross-list deps land in a
+  /// later polish phase). Rejects self-loops and trivial cycles.
+  async addDependency(
+    user: AuthenticatedUser,
+    projectId: string,
+    fromTaskId: string,
+    dto: { toTaskId: string; kind?: TaskDependencyKind },
+  ) {
+    if (fromTaskId === dto.toTaskId) {
+      throw new BadRequestException('A task cannot depend on itself.');
+    }
+    const both = await this.prisma.task.findMany({
+      where: { id: { in: [fromTaskId, dto.toTaskId] }, projectId, deletedAt: null },
+      select: { id: true, taskListId: true },
+    });
+    if (both.length !== 2) {
+      throw new NotFoundException('One or both tasks were not found.');
+    }
+    const [a, b] = both;
+    if (a!.taskListId !== b!.taskListId) {
+      throw new BadRequestException('Dependencies must be within the same task list.');
+    }
+    // Reject the trivial reverse cycle: A→B already and now B→A.
+    const reverse = await this.prisma.taskDependency.findUnique({
+      where: { fromTaskId_toTaskId: { fromTaskId: dto.toTaskId, toTaskId: fromTaskId } },
+    });
+    if (reverse) {
+      throw new BadRequestException(
+        'The reverse dependency already exists; this would create a cycle.',
+      );
+    }
+    const dep = await this.prisma.taskDependency.create({
+      data: {
+        fromTaskId,
+        toTaskId: dto.toTaskId,
+        kind: dto.kind ?? 'FINISH_TO_START',
+      },
+    });
+    await this.activity.record({
+      taskId: fromTaskId,
+      actorId: user.id,
+      kind: TaskActivityKind.DEPENDENCY_ADDED,
+      payload: { toTaskId: dto.toTaskId, depId: dep.id, kind: dep.kind },
+    });
+    return dep;
+  }
+
+  async removeDependency(
+    user: AuthenticatedUser,
+    projectId: string,
+    fromTaskId: string,
+    depId: string,
+  ): Promise<{ ok: true }> {
+    const dep = await this.prisma.taskDependency.findFirst({
+      where: { id: depId, fromTaskId, from: { projectId } },
+    });
+    if (!dep) throw new NotFoundException('Dependency not found.');
+    await this.prisma.taskDependency.delete({ where: { id: depId } });
+    await this.activity.record({
+      taskId: fromTaskId,
+      actorId: user.id,
+      kind: TaskActivityKind.DEPENDENCY_REMOVED,
+      payload: { toTaskId: dep.toTaskId, depId: dep.id },
+    });
+    return { ok: true };
   }
 }
