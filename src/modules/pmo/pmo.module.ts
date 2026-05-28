@@ -4,6 +4,7 @@ import { MentionsModule } from './mentions/mentions.module';
 import { TaskCommentsModule } from './task-comments/task-comments.module';
 import { TaskListsModule } from './task-lists/task-lists.module';
 import { TasksModule } from './tasks/tasks.module';
+import { TeamModule } from './team/team.module';
 
 /**
  * Root PMO module. Submodules are added one per phase as features ship.
@@ -11,7 +12,7 @@ import { TasksModule } from './tasks/tasks.module';
  * can apply it; whenever PMO_ENABLED is false every PMO route 404s.
  */
 @Module({
-  imports: [TaskListsModule, TasksModule, TaskCommentsModule, MentionsModule],
+  imports: [TaskListsModule, TasksModule, TaskCommentsModule, MentionsModule, TeamModule],
   providers: [PmoFeatureFlagGuard],
   exports: [PmoFeatureFlagGuard],
 })
