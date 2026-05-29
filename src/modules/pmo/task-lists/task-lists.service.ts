@@ -5,13 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, TaskList, TaskListTab, TaskStatus } from '@prisma/client';
+import { Prisma, TaskList, TaskListTab, TaskListTabKind, TaskStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import {
   DEFAULT_TASK_LIST_TABS,
   DEFAULT_TASK_STATUSES,
   deriveProjectKey,
 } from './task-list-defaults';
+import { CreateEmbedTabDto } from './dto/create-embed-tab.dto';
 import { CreateTaskListDto } from './dto/create-task-list.dto';
 import { UpdateTaskListDto } from './dto/update-task-list.dto';
 import { ReorderTabsDto } from './dto/reorder-tabs.dto';
@@ -197,6 +198,63 @@ export class TaskListsService {
       throw new BadRequestException('No matching tabs to reorder.');
     }
     await this.prisma.$transaction(updates);
+    return this.get(projectId, listId);
+  }
+
+  /// Add a website-embed (EMBED) tab to a list. Built-in tabs are seeded on
+  /// list create and are never added here.
+  async createEmbedTab(
+    projectId: string,
+    listId: string,
+    dto: CreateEmbedTabDto,
+  ): Promise<TaskListWithRelations> {
+    await this.assertExists(projectId, listId);
+    const maxTabs = this.config.get<number>('pmo.maxTabsPerList') ?? 20;
+    const count = await this.prisma.taskListTab.count({ where: { taskListId: listId } });
+    if (count >= maxTabs) {
+      throw new BadRequestException(`A list can have at most ${maxTabs} tabs.`);
+    }
+    const last = await this.prisma.taskListTab.findFirst({
+      where: { taskListId: listId },
+      orderBy: { order: 'desc' },
+      select: { order: true },
+    });
+    try {
+      await this.prisma.taskListTab.create({
+        data: {
+          taskListId: listId,
+          kind: TaskListTabKind.EMBED,
+          label: dto.label.trim(),
+          url: dto.url,
+          embedPreset: dto.embedPreset ?? 'custom',
+          iconName: dto.iconName ?? null,
+          order: (last?.order ?? -1) + 1,
+        },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('A tab with that name already exists in this list.');
+      }
+      throw err;
+    }
+    return this.get(projectId, listId);
+  }
+
+  /// Delete an EMBED tab. Built-in views can only be hidden (via reorderTabs).
+  async deleteTab(
+    projectId: string,
+    listId: string,
+    tabId: string,
+  ): Promise<TaskListWithRelations> {
+    await this.assertExists(projectId, listId);
+    const tab = await this.prisma.taskListTab.findFirst({
+      where: { id: tabId, taskListId: listId },
+    });
+    if (!tab) throw new NotFoundException('Tab not found.');
+    if (tab.kind !== TaskListTabKind.EMBED) {
+      throw new BadRequestException('Built-in tabs cannot be deleted — hide them instead.');
+    }
+    await this.prisma.taskListTab.delete({ where: { id: tabId } });
     return this.get(projectId, listId);
   }
 

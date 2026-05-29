@@ -15,6 +15,7 @@ import { AuthenticatedUser } from '@/common/types/authenticated-user.type';
 import { ProjectAccessService } from '@/modules/projects/project-access.service';
 import { PmoFeatureFlagGuard } from '../guards/pmo-feature-flag.guard';
 import { BulkUpdateStatusesDto } from '../tasks/dto/bulk-update-statuses.dto';
+import { CreateEmbedTabDto } from './dto/create-embed-tab.dto';
 import { CreateTaskListDto } from './dto/create-task-list.dto';
 import { ReorderTabsDto } from './dto/reorder-tabs.dto';
 import { ReorderTaskListsDto } from './dto/reorder-task-lists.dto';
@@ -129,6 +130,30 @@ export class TaskListsController {
     const { projectId, access } = await this.access.resolve(slug, user);
     this.access.assertManager(access);
     return this.lists.reorderTabs(projectId, listId, dto);
+  }
+
+  @Post('projects/:slug/task-lists/:listId/tabs')
+  async createEmbedTab(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+    @Param('listId', ParseUUIDPipe) listId: string,
+    @Body() dto: CreateEmbedTabDto,
+  ) {
+    const { projectId, access } = await this.access.resolve(slug, user);
+    this.access.assertManager(access);
+    return this.lists.createEmbedTab(projectId, listId, dto);
+  }
+
+  @Delete('projects/:slug/task-lists/:listId/tabs/:tabId')
+  async deleteTab(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+    @Param('listId', ParseUUIDPipe) listId: string,
+    @Param('tabId', ParseUUIDPipe) tabId: string,
+  ) {
+    const { projectId, access } = await this.access.resolve(slug, user);
+    this.access.assertManager(access);
+    return this.lists.deleteTab(projectId, listId, tabId);
   }
 
   @Patch('projects/:slug/task-lists/:listId/statuses')
