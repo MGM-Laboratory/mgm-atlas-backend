@@ -169,6 +169,17 @@ export class TasksController {
     return this.tasks.gantt(projectId, listId);
   }
 
+  @Get('projects/:slug/task-lists/:listId/overview')
+  async overview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+    @Param('listId', ParseUUIDPipe) listId: string,
+  ) {
+    const { projectId, access } = await this.access.resolve(slug, user);
+    this.access.assertInsider(access);
+    return this.tasks.overview(projectId, listId);
+  }
+
   @Post('projects/:slug/tasks/:taskId/dependencies')
   async addDependency(
     @CurrentUser() user: AuthenticatedUser,
