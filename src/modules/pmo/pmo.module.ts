@@ -2,10 +2,12 @@ import { Module } from '@nestjs/common';
 import { FilesModule } from './files/files.module';
 import { PmoFeatureFlagGuard } from './guards/pmo-feature-flag.guard';
 import { MentionsModule } from './mentions/mentions.module';
+import { NotesModule } from './notes/notes.module';
 import { TaskCommentsModule } from './task-comments/task-comments.module';
 import { TaskListsModule } from './task-lists/task-lists.module';
 import { TasksModule } from './tasks/tasks.module';
 import { TeamModule } from './team/team.module';
+import { YjsModule } from './yjs/yjs.module';
 
 /**
  * Root PMO module. Submodules are added one per phase as features ship.
@@ -20,6 +22,8 @@ import { TeamModule } from './team/team.module';
     MentionsModule,
     TeamModule,
     FilesModule,
+    NotesModule,
+    YjsModule,
   ],
   providers: [PmoFeatureFlagGuard],
   exports: [PmoFeatureFlagGuard],
