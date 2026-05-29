@@ -599,6 +599,99 @@ export class TasksService {
     };
   }
 
+  /** Overview-tab widgets: per-status counts, due windows, workload, recent activity. */
+  async overview(projectId: string, listId: string) {
+    await this.assertListExists(projectId, listId);
+
+    const now = new Date();
+    const startToday = new Date(now);
+    startToday.setHours(0, 0, 0, 0);
+    const endToday = new Date(startToday);
+    endToday.setDate(endToday.getDate() + 1);
+    const endWeek = new Date(startToday);
+    endWeek.setDate(endWeek.getDate() + 7);
+
+    const openCategories = [TaskStatusCategory.TODO, TaskStatusCategory.IN_PROGRESS];
+    const openWhere: Prisma.TaskWhereInput = {
+      taskListId: listId,
+      projectId,
+      deletedAt: null,
+      archivedAt: null,
+      status: { category: { in: openCategories } },
+    };
+
+    const [statuses, byStatusGroups, dueToday, dueThisWeek, overdue, totalOpen, assigneeGroups, activity] =
+      await Promise.all([
+        this.prisma.taskStatus.findMany({
+          where: { taskListId: listId },
+          orderBy: { order: 'asc' },
+          select: { id: true, name: true, color: true, category: true },
+        }),
+        this.prisma.task.groupBy({
+          by: ['statusId'],
+          where: { taskListId: listId, projectId, deletedAt: null, archivedAt: null },
+          orderBy: { statusId: 'asc' },
+          _count: { _all: true },
+        }),
+        this.prisma.task.count({ where: { ...openWhere, dueDate: { gte: startToday, lt: endToday } } }),
+        this.prisma.task.count({ where: { ...openWhere, dueDate: { gte: startToday, lt: endWeek } } }),
+        this.prisma.task.count({ where: { ...openWhere, dueDate: { lt: now } } }),
+        this.prisma.task.count({ where: openWhere }),
+        this.prisma.taskAssignee.groupBy({
+          by: ['userId'],
+          where: { task: openWhere },
+          orderBy: { userId: 'asc' },
+          _count: { taskId: true },
+        }),
+        this.prisma.taskActivity.findMany({
+          where: { task: { taskListId: listId, projectId } },
+          orderBy: { createdAt: 'desc' },
+          take: 15,
+          include: { actor: { select: { id: true, name: true, avatarUrl: true } } },
+        }),
+      ]);
+
+    const countByStatus = new Map(byStatusGroups.map((g) => [g.statusId, g._count._all]));
+    const userIds = assigneeGroups.map((g) => g.userId);
+    const users = userIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, name: true, avatarUrl: true },
+        })
+      : [];
+    const userById = new Map(users.map((u) => [u.id, u]));
+
+    return {
+      byStatus: statuses.map((s) => ({
+        statusId: s.id,
+        name: s.name,
+        color: s.color,
+        category: s.category,
+        count: countByStatus.get(s.id) ?? 0,
+      })),
+      dueToday,
+      dueThisWeek,
+      overdue,
+      totalOpen,
+      workload: assigneeGroups
+        .map((g) => ({
+          userId: g.userId,
+          name: userById.get(g.userId)?.name ?? 'Unknown',
+          avatarUrl: userById.get(g.userId)?.avatarUrl ?? null,
+          count: g._count.taskId,
+        }))
+        .sort((a, b) => b.count - a.count),
+      recentActivity: activity.map((a) => ({
+        id: a.id,
+        kind: a.kind,
+        payload: a.payload,
+        createdAt: a.createdAt,
+        taskId: a.taskId,
+        actor: a.actor,
+      })),
+    };
+  }
+
   /// Add a dependency from `:taskId` → `dto.toTaskId`. Both tasks must
   /// belong to the same project (no cross-project links) AND the same
   /// list (gantt is per-list in Phase 5; cross-list deps land in a

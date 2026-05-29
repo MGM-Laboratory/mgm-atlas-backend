@@ -3,6 +3,7 @@ import { FilesModule } from './files/files.module';
 import { PmoFeatureFlagGuard } from './guards/pmo-feature-flag.guard';
 import { MentionsModule } from './mentions/mentions.module';
 import { NotesModule } from './notes/notes.module';
+import { SchedulingModule } from './scheduling/scheduling.module';
 import { TaskCommentsModule } from './task-comments/task-comments.module';
 import { TaskListsModule } from './task-lists/task-lists.module';
 import { TasksModule } from './tasks/tasks.module';
@@ -26,6 +27,7 @@ import { YjsModule } from './yjs/yjs.module';
     NotesModule,
     WhiteboardsModule,
     YjsModule,
+    SchedulingModule,
   ],
   providers: [PmoFeatureFlagGuard],
   exports: [PmoFeatureFlagGuard],
