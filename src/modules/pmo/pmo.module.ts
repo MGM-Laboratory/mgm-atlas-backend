@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { FilesModule } from './files/files.module';
 import { PmoFeatureFlagGuard } from './guards/pmo-feature-flag.guard';
 import { MentionsModule } from './mentions/mentions.module';
 import { TaskCommentsModule } from './task-comments/task-comments.module';
@@ -12,7 +13,14 @@ import { TeamModule } from './team/team.module';
  * can apply it; whenever PMO_ENABLED is false every PMO route 404s.
  */
 @Module({
-  imports: [TaskListsModule, TasksModule, TaskCommentsModule, MentionsModule, TeamModule],
+  imports: [
+    TaskListsModule,
+    TasksModule,
+    TaskCommentsModule,
+    MentionsModule,
+    TeamModule,
+    FilesModule,
+  ],
   providers: [PmoFeatureFlagGuard],
   exports: [PmoFeatureFlagGuard],
 })
