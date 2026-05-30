@@ -105,4 +105,21 @@ export default () => ({
     // How long after the last edit before the sidecar pushes a snapshot.
     snapshotDebounceMs: parseInt(process.env.YJS_SNAPSHOT_DEBOUNCE_MS ?? '30000', 10),
   },
+  voice: {
+    // Global kill switch. Off by default so the foundation ships dark.
+    enabled: (process.env.VOICE_ENABLED ?? 'false').toLowerCase() === 'true',
+    // LiveKit signaling base URL (wss://atlas.labmgm.org/livekit in prod).
+    // Empty = feature reports "unavailable" but backend boots unchanged.
+    livekitUrl: process.env.LIVEKIT_URL ?? '',
+    livekitApiKey: process.env.LIVEKIT_API_KEY ?? '',
+    livekitApiSecret: process.env.LIVEKIT_API_SECRET ?? '',
+    // HMAC secret LiveKit signs its webhook deliveries with.
+    livekitWebhookKey: process.env.LIVEKIT_WEBHOOK_KEY ?? '',
+    // TTL for the LiveKit access tokens minted by the backend.
+    jwtTtlSeconds: parseInt(process.env.VOICE_JWT_TTL_SECONDS ?? '14400', 10),
+    // Default user-limit for newly-created channels (0 = unlimited).
+    defaultUserLimit: parseInt(process.env.VOICE_DEFAULT_USER_LIMIT ?? '0', 10),
+    // Phase 7: recording retention. 0 = keep forever.
+    recordingRetentionDays: parseInt(process.env.VOICE_RECORDING_RETENTION_DAYS ?? '30', 10),
+  },
 });
