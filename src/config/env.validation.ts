@@ -158,6 +158,94 @@ class EnvVars {
   @IsOptional()
   @IsInt()
   CHAT_EDIT_WINDOW_HOURS?: number;
+
+  // ─── PMO (all optional; PMO_ENABLED=false by default keeps the whole
+  //     module dark so prod boots unchanged) ─────────────────────────
+  @IsOptional()
+  @IsString()
+  PMO_ENABLED?: string;
+
+  @IsOptional()
+  @IsInt()
+  PMO_MAX_TASKS_PER_LIST?: number;
+
+  @IsOptional()
+  @IsInt()
+  PMO_MAX_LISTS_PER_PROJECT?: number;
+
+  @IsOptional()
+  @IsInt()
+  PMO_MAX_NOTES_PER_PROJECT?: number;
+
+  @IsOptional()
+  @IsInt()
+  PMO_MAX_WHITEBOARDS_PER_PROJECT?: number;
+
+  @IsOptional()
+  @IsInt()
+  PMO_MAX_TABS_PER_LIST?: number;
+
+  @IsOptional()
+  @IsInt()
+  PMO_FILE_MAX_BYTES?: number;
+
+  @IsOptional()
+  @IsString()
+  PMO_FILE_ALLOWED_MIME?: string;
+
+  // ─── Yjs (notes + whiteboards realtime collab) ────────────────────
+  // Frontend connects to YJS_PUBLIC_WS_URL; backend authorizes joins
+  // via YJS_INTERNAL_AUTH_SECRET (HMAC on the auth callback).
+  @IsOptional()
+  @IsString()
+  YJS_PUBLIC_WS_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  YJS_INTERNAL_AUTH_SECRET?: string;
+
+  @IsOptional()
+  @IsInt()
+  YJS_SNAPSHOT_DEBOUNCE_MS?: number;
+
+  // ─── Voice chat (LiveKit; all optional so VOICE_ENABLED=false ships dark) ──
+  // VOICE_ENABLED=false → every /voice/* route 404s and no LiveKit
+  // connection is attempted. The other vars are only consulted when
+  // VOICE_ENABLED=true; an empty LIVEKIT_URL causes the feature to
+  // report "unavailable" rather than crashing.
+  @IsOptional()
+  @IsString()
+  VOICE_ENABLED?: string;
+
+  @IsOptional()
+  @IsString()
+  LIVEKIT_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  LIVEKIT_API_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  LIVEKIT_API_SECRET?: string;
+
+  /// HMAC secret LiveKit signs its webhook deliveries with.
+  @IsOptional()
+  @IsString()
+  LIVEKIT_WEBHOOK_KEY?: string;
+
+  @IsOptional()
+  @IsInt()
+  VOICE_JWT_TTL_SECONDS?: number;
+
+  @IsOptional()
+  @IsInt()
+  VOICE_DEFAULT_USER_LIMIT?: number;
+
+  /// Phase 7 (recording). Default 30d retention; 0 = keep forever.
+  @IsOptional()
+  @IsInt()
+  VOICE_RECORDING_RETENTION_DAYS?: number;
 }
 
 export function validateEnv(raw: Record<string, unknown>) {

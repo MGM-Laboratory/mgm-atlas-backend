@@ -59,6 +59,27 @@ enum NotificationType {
   PROJECT_ROLE_CHANGED
   PROJECT_REMOVED
   CHAT_MENTION
+  // PMO additions — appended only; never reorder existing values.
+  TASK_ASSIGNED
+  TASK_MENTIONED
+  TASK_DUE_SOON
+  TASK_OVERDUE
+  TASK_COMMENT_REPLY
+  TASK_STATUS_CHANGED
+  TASK_DEPENDENCY_BLOCKED
+  NOTE_MENTIONED
+  WHITEBOARD_MENTIONED
+  // Voice additions — appended only; never reorder existing values.
+  VOICE_PARTICIPANT_JOINED
+  VOICE_MENTIONED
+}
+
+// ─── Voice enums ─────────────────────────────────────────────────────────
+
+enum VoiceAudioQuality {
+  LOW
+  STANDARD
+  HIGH
 }
 
 // ─── Chat enums ──────────────────────────────────────────────────────────
@@ -85,34 +106,48 @@ enum ChatDeleteActor {
 // ─── Identity ────────────────────────────────────────────────────────────
 
 model User {
-  id          String   @id @default(uuid())
-  keycloakId  String   @unique
-  email       String   @unique
+  id          String    @id @default(uuid())
+  keycloakId  String    @unique
+  email       String    @unique
   name        String
   avatarUrl   String?
   bio         String?
-  isAdmin     Boolean  @default(false)
+  isAdmin     Boolean   @default(false)
   lastLoginAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  ownedProjects        Project[]              @relation("ProjectOwner")
-  memberships          ProjectMember[]
-  contributionRequests ContributionRequest[]
-  resolvedRequests     ContributionRequest[]  @relation("ResolvedBy")
-  notifications        Notification[]
-  invitedReceived      ProjectInvite[]        @relation("InvitedUser")
-  invitedSent          ProjectInvite[]        @relation("InvitedBy")
-  bookmarks            Bookmark[]
-  featuredAssignments  FeaturedProject[]      @relation("FeaturedBy")
-  sessions             Session[]
-  chatChannelsCreated  ChatChannel[]          @relation("ChatChannelCreator")
-  chatChannelMembers   ChatChannelMember[]
-  chatMessages         ChatMessage[]          @relation("ChatMessageAuthor")
-  chatMessagesDeleted  ChatMessage[]          @relation("ChatMessageDeleter")
-  chatReactions        ChatReaction[]
-  chatPins             ChatPinned[]           @relation("ChatPinnedBy")
-  stickerPacksCreated  StickerPack[]          @relation("StickerPackCreator")
+  ownedProjects                  Project[]               @relation("ProjectOwner")
+  memberships                    ProjectMember[]
+  contributionRequests           ContributionRequest[]
+  resolvedRequests               ContributionRequest[]   @relation("ResolvedBy")
+  notifications                  Notification[]
+  invitedReceived                ProjectInvite[]         @relation("InvitedUser")
+  invitedSent                    ProjectInvite[]         @relation("InvitedBy")
+  bookmarks                      Bookmark[]
+  featuredAssignments            FeaturedProject[]       @relation("FeaturedBy")
+  sessions                       Session[]
+  chatChannelsCreated            ChatChannel[]           @relation("ChatChannelCreator")
+  chatChannelMembers             ChatChannelMember[]
+  chatMessages                   ChatMessage[]           @relation("ChatMessageAuthor")
+  chatMessagesDeleted            ChatMessage[]           @relation("ChatMessageDeleter")
+  chatReactions                  ChatReaction[]
+  chatPins                       ChatPinned[]            @relation("ChatPinnedBy")
+  stickerPacksCreated            StickerPack[]           @relation("StickerPackCreator")
+  // PMO back-relations (no DB impact; Prisma-only).
+  tasksCreated                   Task[]                  @relation("TaskCreator")
+  taskAssignments                TaskAssignee[]
+  taskComments                   TaskComment[]           @relation("TaskCommentAuthor")
+  taskActivities                 TaskActivity[]          @relation("TaskActivityActor")
+  taskAttachmentsUploaded        TaskAttachment[]        @relation("TaskAttachmentUploader")
+  taskCommentAttachmentsUploaded TaskCommentAttachment[] @relation("TaskCommentAttachmentUploader")
+  projectFilesUploaded           ProjectFile[]           @relation("ProjectFileUploader")
+  projectNotesCreated            ProjectNote[]           @relation("ProjectNoteCreator")
+  whiteboardsCreated             Whiteboard[]            @relation("WhiteboardCreator")
+  // Voice back-relations (no DB impact; Prisma-only).
+  voiceChannelsCreated           VoiceChannel[]          @relation("VoiceChannelCreator")
+  voiceParticipations            VoiceParticipant[]
+  voiceSoundboardClipsUploaded   VoiceSoundboardClip[]   @relation("VoiceSoundboardUploader")
 
   @@index([email])
   @@index([isAdmin])
@@ -121,14 +156,14 @@ model User {
 // ─── Sessions (database-backed, no cookies) ───────────────────────────────
 
 model Session {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   accessToken  String
   refreshToken String?
   idToken      String?
-  
+
   expiresAt DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -140,14 +175,14 @@ model Session {
 // ─── Tags ────────────────────────────────────────────────────────────────
 
 model Tag {
-  id        String       @id @default(uuid())
+  id        String   @id @default(uuid())
   name      String
   category  String
-  slug      String       @unique
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  projects  ProjectTag[]
+  projects ProjectTag[]
 
   @@unique([name, category])
   @@index([category])
@@ -156,27 +191,29 @@ model Tag {
 // ─── Projects ────────────────────────────────────────────────────────────
 
 model Project {
-  id                  String            @id @default(uuid())
-  slug                String            @unique
-  title               String
-  shortDescription    String
+  id                 String            @id @default(uuid())
+  slug               String            @unique
+  title              String
+  shortDescription   String
   /// Notion-style rich-text JSON document (Tiptap-compatible).
-  description         Json
+  description        Json
   /// Canonical thumbnail URL (set automatically from the first media item).
-  thumbnailUrl        String?
-  thumbnailType       MediaType?
-  techStack           String[]          @default([])
-  phase               ProjectPhase      @default(IDEA)
-  visibility          ProjectVisibility @default(PRIVATE)
-  collaborationRoles  String[]          @default([])
+  thumbnailUrl       String?
+  thumbnailType      MediaType?
+  techStack          String[]          @default([])
+  phase              ProjectPhase      @default(IDEA)
+  visibility         ProjectVisibility @default(PRIVATE)
+  collaborationRoles String[]          @default([])
   /// { pmTool?, repository?, staging?, designs?, other?: { label, url }[] }
-  internalLinks       Json?
-  ownerId             String
-  publishedAt         DateTime?
-  archivedAt          DateTime?
-  deletedAt           DateTime?
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  internalLinks      Json?
+  /// PMO-scoped project settings: { projectKey?: string }. Null = defaults derived from slug.
+  pmoSettings        Json?
+  ownerId            String
+  publishedAt        DateTime?
+  archivedAt         DateTime?
+  deletedAt          DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
 
   owner                User                  @relation("ProjectOwner", fields: [ownerId], references: [id])
   media                ProjectMedia[]
@@ -187,6 +224,14 @@ model Project {
   featured             FeaturedProject?
   bookmarks            Bookmark[]
   chatChannels         ChatChannel[]
+  // PMO back-relations.
+  taskLists            TaskList[]
+  tasks                Task[]
+  files                ProjectFile[]
+  notes                ProjectNote[]
+  whiteboards          Whiteboard[]
+  // Voice back-relations.
+  voiceChannels        VoiceChannel[]
 
   @@index([visibility, phase])
   @@index([ownerId])
@@ -206,7 +251,7 @@ model ProjectMedia {
   sizeBytes Int?
   createdAt DateTime  @default(now())
 
-  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, order])
   @@index([projectId])
@@ -216,8 +261,8 @@ model ProjectTag {
   projectId String
   tagId     String
 
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([projectId, tagId])
   @@index([tagId])
@@ -232,8 +277,8 @@ model ProjectMember {
   title     String?
   joinedAt  DateTime    @default(now())
 
-  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, userId])
   @@index([userId])
@@ -243,23 +288,23 @@ model ProjectMember {
 // ─── Contributions ───────────────────────────────────────────────────────
 
 model ContributionRequest {
-  id           String                    @id @default(uuid())
-  projectId    String
-  userId       String
+  id             String                    @id @default(uuid())
+  projectId      String
+  userId         String
   /// The collaboration role they're applying for (e.g. "Frontend Engineer").
-  role         String
-  message      String
-  status       ContributionRequestStatus @default(PENDING)
-  resolvedAt   DateTime?
-  resolvedById String?
+  role           String
+  message        String
+  status         ContributionRequestStatus @default(PENDING)
+  resolvedAt     DateTime?
+  resolvedById   String?
   /// Optional moderator note shown to the applicant on approve/reject.
   resolutionNote String?
-  createdAt    DateTime                  @default(now())
-  updatedAt    DateTime                  @updatedAt
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
 
-  project      Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user         User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  resolvedBy   User?                     @relation("ResolvedBy", fields: [resolvedById], references: [id])
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resolvedBy User?   @relation("ResolvedBy", fields: [resolvedById], references: [id])
 
   @@index([projectId, status])
   @@index([userId, status])
@@ -277,9 +322,9 @@ model ProjectInvite {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  invitedUser   User         @relation("InvitedUser", fields: [invitedUserId], references: [id], onDelete: Cascade)
-  invitedBy     User         @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invitedUser User    @relation("InvitedUser", fields: [invitedUserId], references: [id], onDelete: Cascade)
+  invitedBy   User    @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
 
   @@unique([projectId, invitedUserId, status])
   @@index([invitedUserId, status])
@@ -300,7 +345,7 @@ model Notification {
   readAt    DateTime?
   createdAt DateTime         @default(now())
 
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt])
   @@index([userId, createdAt])
@@ -314,8 +359,8 @@ model FeaturedProject {
   order     Int      @default(0)
   setAt     DateTime @default(now())
 
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  setBy     User     @relation("FeaturedBy", fields: [setById], references: [id])
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  setBy   User    @relation("FeaturedBy", fields: [setById], references: [id])
 
   @@index([order])
 }
@@ -323,12 +368,12 @@ model FeaturedProject {
 // ─── Configurable list of collaboration roles (admin-managed) ────────────
 
 model CollaborationRole {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  order     Int      @default(0)
+  id         String    @id @default(uuid())
+  name       String    @unique
+  order      Int       @default(0)
   archivedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@index([archivedAt])
 }
@@ -340,8 +385,8 @@ model Bookmark {
   projectId String
   createdAt DateTime @default(now())
 
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@id([userId, projectId])
   @@index([projectId])
@@ -350,14 +395,14 @@ model Bookmark {
 // ─── Webhook delivery log (so we can see if n8n is failing) ──────────────
 
 model WebhookDelivery {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   event        String
   payload      Json
   status       Int?
   responseBody String?
-  attempt      Int      @default(1)
-  succeeded    Boolean  @default(false)
-  createdAt    DateTime @default(now())
+  attempt      Int       @default(1)
+  succeeded    Boolean   @default(false)
+  createdAt    DateTime  @default(now())
   completedAt  DateTime?
 
   @@index([event, succeeded])
@@ -388,6 +433,10 @@ model ChatChannel {
   messages  ChatMessage[]
   members   ChatChannelMember[]
   pinned    ChatPinned[]
+  // Voice back-relation: when this channel is the per-voice-channel
+  // text thread (§10), the linked VoiceChannel owns the FK. Prisma-only;
+  // no DB impact (the column lives on VoiceChannel.textThreadId).
+  voiceChannel VoiceChannel?    @relation("VoiceTextThread")
 
   @@unique([projectId, name])
   @@index([projectId, isArchived])
@@ -410,22 +459,22 @@ model ChatChannelMember {
 }
 
 model ChatMessage {
-  id                String           @id @default(uuid())
-  channelId         String
-  authorId          String
-  kind              ChatMessageKind  @default(TEXT)
+  id              String           @id @default(uuid())
+  channelId       String
+  authorId        String
+  kind            ChatMessageKind  @default(TEXT)
   /// Canonical GFM markdown source. Never store HTML; renderer sanitizes at read time.
-  markdown          String
-  replyToId         String?
-  forwardedFromId   String?
-  editedAt          DateTime?
-  deletedAt         DateTime?
-  deletedByUserId   String?
-  deletedActor      ChatDeleteActor?
+  markdown        String
+  replyToId       String?
+  forwardedFromId String?
+  editedAt        DateTime?
+  deletedAt       DateTime?
+  deletedByUserId String?
+  deletedActor    ChatDeleteActor?
   /// Sender-side render metadata that doesn't belong in the core shape.
   /// Currently holds attached link previews: { linkPreviews: ChatLinkPreviewInline[] }.
-  metadata          Json?
-  createdAt         DateTime         @default(now())
+  metadata        Json?
+  createdAt       DateTime         @default(now())
 
   channel       ChatChannel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
   author        User             @relation("ChatMessageAuthor", fields: [authorId], references: [id], onDelete: Restrict)
@@ -481,14 +530,14 @@ model ChatReaction {
 }
 
 model ChatPinned {
-  id          String   @id @default(uuid())
-  channelId   String
-  messageId   String
-  pinnedById  String
-  position    Int      @default(0)
-  pinnedAt    DateTime @default(now())
+  id         String   @id @default(uuid())
+  channelId  String
+  messageId  String
+  pinnedById String
+  position   Int      @default(0)
+  pinnedAt   DateTime @default(now())
   /// Optional manager-supplied context note shown alongside the pinned message.
-  note        String?
+  note       String?
 
   channel  ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
   message  ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
@@ -551,4 +600,442 @@ model Sticker {
   pack StickerPack @relation(fields: [packId], references: [id], onDelete: Cascade)
 
   @@index([packId, position])
+}
+
+// ─── PMO (project management office) ─────────────────────────────────────
+// All additive. Gated at the application layer behind PmoFeatureFlagGuard
+// + frontend usePmoEnabled() so the module can ship dark before any UI
+// surfaces it. See plan: current-workdir-is-a-cached-haven.md.
+
+enum TaskStatusCategory {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskDependencyKind {
+  FINISH_TO_START
+  START_TO_START
+  FINISH_TO_FINISH
+  START_TO_FINISH
+}
+
+enum TaskActivityKind {
+  CREATED
+  RENAMED
+  DESCRIPTION_EDITED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  ASSIGNED
+  UNASSIGNED
+  DUE_DATE_SET
+  DUE_DATE_CLEARED
+  START_DATE_SET
+  DEPENDENCY_ADDED
+  DEPENDENCY_REMOVED
+  COMMENT_ADDED
+  ATTACHMENT_ADDED
+  ARCHIVED
+  UNARCHIVED
+  COMPLETED
+  REOPENED
+  MENTIONED
+}
+
+enum TaskListTabKind {
+  OVERVIEW
+  LIST
+  KANBAN
+  GANTT
+  TEAM
+  FILES
+  NOTES
+  WHITEBOARDS
+  EMBED
+}
+
+model TaskList {
+  id                         String    @id @default(uuid())
+  projectId                  String
+  name                       String
+  /// Lucide icon key, e.g. "list-todo".
+  iconName                   String    @default("list-todo")
+  /// Brand token: blue | yellow | red | green | neutral.
+  iconColor                  String    @default("blue")
+  order                      Int       @default(0)
+  contributorsCanCreateTasks Boolean   @default(true)
+  /// Uppercase 2–6 character code used in TaskKey (e.g. "FE"). Null = defaults to project key.
+  projectKey                 String?
+  /// Atomic counter; bumped via UPDATE ... RETURNING when minting a Task.key.
+  taskCounter                Int       @default(0)
+  archivedAt                 DateTime?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+  deletedAt                  DateTime?
+
+  project  Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  statuses TaskStatus[]
+  tasks    Task[]
+  tabs     TaskListTab[]
+
+  @@index([projectId, order])
+  @@index([projectId, deletedAt])
+}
+
+model TaskStatus {
+  id         String             @id @default(uuid())
+  taskListId String
+  name       String
+  /// Brand token: blue | yellow | red | green | neutral.
+  color      String             @default("neutral")
+  category   TaskStatusCategory @default(TODO)
+  order      Int                @default(0)
+  /// Status given to newly created tasks. Exactly one per TaskList.
+  isDefault  Boolean            @default(false)
+
+  taskList TaskList @relation(fields: [taskListId], references: [id], onDelete: Cascade)
+  tasks    Task[]
+
+  @@unique([taskListId, order])
+  @@index([taskListId])
+}
+
+model Task {
+  id               String       @id @default(uuid())
+  taskListId       String
+  /// Denormalized for fast project-scoped queries (mentions, dashboards).
+  projectId        String
+  /// User-facing identifier, e.g. "FE-12". Unique within projectId.
+  key              String
+  title            String
+  /// Tiptap JSON document — same shape as Project.description.
+  description      Json         @default("{}")
+  statusId         String
+  priority         TaskPriority @default(NONE)
+  storyPoints      Int?
+  startDate        DateTime?
+  dueDate          DateTime?
+  completedAt      DateTime?
+  /// Fractional index for stable kanban/list ordering without N updates per drag.
+  positionInStatus Decimal      @default(0) @db.Decimal(20, 10)
+  createdById      String
+  archivedAt       DateTime?
+  deletedAt        DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  taskList        TaskList         @relation(fields: [taskListId], references: [id], onDelete: Cascade)
+  project         Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status          TaskStatus       @relation(fields: [statusId], references: [id])
+  createdBy       User             @relation("TaskCreator", fields: [createdById], references: [id])
+  assignees       TaskAssignee[]
+  comments        TaskComment[]
+  attachments     TaskAttachment[]
+  dependenciesOut TaskDependency[] @relation("DependencyFrom")
+  dependenciesIn  TaskDependency[] @relation("DependencyTo")
+  activity        TaskActivity[]
+
+  @@unique([projectId, key])
+  @@index([taskListId, statusId, positionInStatus])
+  @@index([projectId, deletedAt])
+  @@index([dueDate])
+}
+
+model TaskAssignee {
+  id         String   @id @default(uuid())
+  taskId     String
+  userId     String
+  assignedAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([userId])
+}
+
+model TaskDependency {
+  id         String             @id @default(uuid())
+  /// "this task depends on..."
+  fromTaskId String
+  /// "...this task finishing/starting"
+  toTaskId   String
+  kind       TaskDependencyKind @default(FINISH_TO_START)
+  createdAt  DateTime           @default(now())
+
+  from Task @relation("DependencyFrom", fields: [fromTaskId], references: [id], onDelete: Cascade)
+  to   Task @relation("DependencyTo", fields: [toTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([fromTaskId, toTaskId])
+  @@index([toTaskId])
+}
+
+model TaskComment {
+  id        String    @id @default(uuid())
+  taskId    String
+  authorId  String
+  /// GFM markdown source (same convention as ChatMessage.markdown).
+  markdown  String
+  replyToId String?
+  editedAt  DateTime?
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  task        Task                    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author      User                    @relation("TaskCommentAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  replyTo     TaskComment?            @relation("TaskCommentReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies     TaskComment[]           @relation("TaskCommentReply")
+  attachments TaskCommentAttachment[]
+
+  @@index([taskId, createdAt])
+}
+
+model TaskAttachment {
+  id           String             @id @default(uuid())
+  taskId       String
+  kind         ChatAttachmentKind
+  url          String
+  s3Key        String
+  mime         String
+  bytes        Int
+  width        Int?
+  height       Int?
+  durationSec  Float?
+  posterUrl    String?
+  uploadedById String
+  createdAt    DateTime           @default(now())
+
+  task       Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploadedBy User @relation("TaskAttachmentUploader", fields: [uploadedById], references: [id])
+
+  @@index([taskId])
+}
+
+model TaskCommentAttachment {
+  id           String             @id @default(uuid())
+  commentId    String
+  kind         ChatAttachmentKind
+  url          String
+  s3Key        String
+  mime         String
+  bytes        Int
+  width        Int?
+  height       Int?
+  durationSec  Float?
+  posterUrl    String?
+  uploadedById String
+  createdAt    DateTime           @default(now())
+
+  comment    TaskComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  uploadedBy User        @relation("TaskCommentAttachmentUploader", fields: [uploadedById], references: [id])
+
+  @@index([commentId])
+}
+
+model TaskActivity {
+  id        String           @id @default(uuid())
+  taskId    String
+  /// Null when the actor is the system (cron, webhook callback, etc.).
+  actorId   String?
+  kind      TaskActivityKind
+  /// Structured diff: { field, before, after } or kind-specific payload.
+  payload   Json             @default("{}")
+  createdAt DateTime         @default(now())
+
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actor User? @relation("TaskActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([taskId, createdAt])
+}
+
+model TaskListTab {
+  id          String          @id @default(uuid())
+  taskListId  String
+  kind        TaskListTabKind
+  /// Free-form label for EMBED tabs (e.g. "Figma — wireframes"). Null on built-in views.
+  label       String?
+  iconName    String?
+  /// URL for EMBED kind.
+  url         String?
+  /// figma | gdocs | gsheets | gslides | canva | loom | youtube | miro | custom.
+  embedPreset String?
+  order       Int             @default(0)
+  /// Built-in views are auto-seeded on TaskList create and not deletable; they can be hidden + reordered.
+  hidden      Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+
+  taskList TaskList @relation(fields: [taskListId], references: [id], onDelete: Cascade)
+
+  @@unique([taskListId, kind, label])
+  @@index([taskListId, order])
+}
+
+model ProjectFile {
+  id             String    @id @default(uuid())
+  projectId      String
+  parentFolderId String?
+  name           String
+  isFolder       Boolean   @default(false)
+  /// Null for folders.
+  url            String?
+  s3Key          String?
+  mime           String?
+  bytes          Int?
+  uploadedById   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent     ProjectFile?  @relation("ProjectFileFolder", fields: [parentFolderId], references: [id], onDelete: SetNull)
+  children   ProjectFile[] @relation("ProjectFileFolder")
+  uploadedBy User?         @relation("ProjectFileUploader", fields: [uploadedById], references: [id])
+
+  @@index([projectId, parentFolderId])
+  @@index([projectId, deletedAt])
+}
+
+model ProjectNote {
+  id              String    @id @default(uuid())
+  projectId       String
+  parentNoteId    String?
+  title           String    @default("Untitled")
+  iconName        String?
+  /// Latest serialized BlockNote JSON snapshot for SSR/preview/search. Live edits go through Yjs.
+  contentSnapshot Json      @default("{}")
+  /// Logical key into YDocSnapshot.docKey, e.g. "note:<id>".
+  yDocKey         String    @unique
+  createdById     String
+  order           Int       @default(0)
+  archivedAt      DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  project   Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User          @relation("ProjectNoteCreator", fields: [createdById], references: [id])
+  parent    ProjectNote?  @relation("ProjectNoteTree", fields: [parentNoteId], references: [id], onDelete: SetNull)
+  children  ProjectNote[] @relation("ProjectNoteTree")
+
+  @@index([projectId, parentNoteId, order])
+  @@index([projectId, deletedAt])
+}
+
+model Whiteboard {
+  id            String    @id @default(uuid())
+  projectId     String
+  title         String    @default("Untitled whiteboard")
+  description   String?
+  /// Logical key into YDocSnapshot.docKey, e.g. "whiteboard:<id>".
+  yDocKey       String    @unique
+  /// Last persisted Excalidraw scene JSON for fast preview/export.
+  sceneSnapshot Json      @default("{}")
+  thumbnailUrl  String?
+  createdById   String
+  archivedAt    DateTime?
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("WhiteboardCreator", fields: [createdById], references: [id])
+
+  @@index([projectId, deletedAt])
+}
+
+model YDocSnapshot {
+  id        String   @id @default(uuid())
+  /// Logical document scope, e.g. "note:<noteId>" or "whiteboard:<wbId>".
+  docKey    String   @unique
+  /// Binary Yjs update; opaque to backend.
+  state     Bytes
+  size      Int
+  version   Int      @default(0)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([docKey])
+}
+
+// ─── Voice (Discord-parity voice/video/screen-share) ─────────────────────
+// Feature-flagged by VOICE_ENABLED. Schema ships dark in Phase 0 so prod
+// boots unchanged. LiveKit room identity is "voice:<channelId>"
+// (deterministic — no separate Room table).
+
+model VoiceChannel {
+  id           String            @id @default(uuid())
+  /// Null = workspace lobby (any authenticated user can join).
+  projectId    String?
+  name         String
+  /// Discord-style status / topic line shown next to the channel.
+  topic        String?
+  /// null = unlimited
+  userLimit    Int?
+  audioQuality VoiceAudioQuality @default(STANDARD)
+  /// True for the channel auto-created with a project (or the lobby default).
+  isDefault    Boolean           @default(false)
+  sortIndex    Int               @default(0)
+  /// Per-role permission map. Shape:
+  /// { PROJECT_MANAGER: {connect,speak,video,screen,soundboard},
+  ///   CONTRIBUTOR:     {connect,speak,video,screen,soundboard} }
+  /// Empty object = use sane defaults (everyone can do everything).
+  permissions  Json              @default("{}")
+  /// FK to the paired ChatChannel that backs this voice channel's text
+  /// thread (§10). Populated in Phase 4; null until then.
+  textThreadId String?           @unique
+  createdById  String
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  archivedAt   DateTime?
+
+  project      Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy    User               @relation("VoiceChannelCreator", fields: [createdById], references: [id])
+  textThread   ChatChannel?       @relation("VoiceTextThread", fields: [textThreadId], references: [id])
+  participants VoiceParticipant[]
+
+  @@index([projectId, archivedAt])
+  @@index([projectId, sortIndex])
+}
+
+model VoiceParticipant {
+  id         String    @id @default(uuid())
+  channelId  String
+  userId     String
+  joinedAt   DateTime  @default(now())
+  /// Set when the user leaves (gracefully or via LiveKit webhook reconciliation).
+  /// Null means "currently connected" — that's how we count live occupants.
+  leftAt     DateTime?
+  /// LiveKit participant SID for moderation API lookups.
+  livekitSid String?
+  /// True if a moderator has server-side muted this participant.
+  mutedByMod Boolean   @default(false)
+
+  channel VoiceChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, leftAt])
+  @@index([userId, leftAt])
+}
+
+model VoiceSoundboardClip {
+  id           String   @id @default(uuid())
+  name         String
+  s3Key        String
+  url          String
+  durationMs   Int
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  uploadedBy User @relation("VoiceSoundboardUploader", fields: [uploadedById], references: [id])
+
+  @@index([uploadedById])
 }

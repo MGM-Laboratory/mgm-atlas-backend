@@ -201,6 +201,8 @@ export class UsersService {
       .filter((m) => m.role === 'CONTRIBUTOR')
       .map((m) => m.project);
 
+    const myOpenTasks = await this.getMyOpenTasks(userId);
+
     return {
       managed,
       contributing,
@@ -212,6 +214,37 @@ export class UsersService {
         project: r.project,
       })),
       bookmarks: bookmarks.map((b) => b.project),
+      myOpenTasks,
     };
+  }
+
+  /**
+   * Top open PMO tasks assigned to the user, soonest due first. Empty when
+   * PMO is disabled so the dashboard widget simply renders nothing.
+   */
+  private async getMyOpenTasks(userId: string) {
+    if (!this.config.get<boolean>('pmo.enabled')) return [];
+    const tasks = await this.prisma.task.findMany({
+      where: {
+        deletedAt: null,
+        archivedAt: null,
+        assignees: { some: { userId } },
+        status: { category: { in: ['TODO', 'IN_PROGRESS'] } },
+        project: { deletedAt: null },
+      },
+      orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
+      take: 10,
+      select: {
+        id: true,
+        key: true,
+        title: true,
+        dueDate: true,
+        priority: true,
+        status: { select: { name: true, color: true, category: true } },
+        taskList: { select: { id: true, name: true } },
+        project: { select: { slug: true, title: true } },
+      },
+    });
+    return tasks;
   }
 }

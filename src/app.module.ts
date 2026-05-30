@@ -18,6 +18,8 @@ import { MailerModule } from './modules/mailer/mailer.module';
 import { HealthModule } from './modules/health/health.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { ChatModule } from './modules/chat/chat.module';
+import { PmoModule } from './modules/pmo/pmo.module';
+import { VoiceModule } from './modules/voice/voice.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RedisModule } from './infra/redis/redis.module';
 
@@ -51,6 +53,8 @@ import { RedisModule } from './infra/redis/redis.module';
     NotificationsModule,
     AdminModule,
     ChatModule,
+    PmoModule,
+    VoiceModule,
     HealthModule,
   ],
   providers: [

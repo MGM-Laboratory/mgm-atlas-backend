@@ -18,3 +18,72 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+
+  # Yjs sync sidecar for PMO notes + whiteboards collab. Phase 0 ships a
+  # stub server; auth-callback wiring lands in Phase 8. The backend boots
+  # fine without this container, so it can be added to the running stack
+  # at any time without coordination.
+  atlas-y-websocket:
+    image: labmgm/atlas-y-websocket:latest
+    container_name: atlas-y-websocket
+    restart: always
+    environment:
+      PORT: 1234
+      # Filled in Phase 8 — used to verify HMAC headers from the backend
+      # on the auth/snapshot callbacks. Empty in Phase 0 is fine; the
+      # stub server doesn't read it yet.
+      YJS_INTERNAL_AUTH_SECRET: ${YJS_INTERNAL_AUTH_SECRET:-}
+      ATLAS_BACKEND_BASE_URL: ${APP_BASE_URL}/api/v1
+    ports:
+      - "${YJS_HOST_PORT:-1234}:1234"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:1234/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # LiveKit SFU for Atlas voice chat (Phase 0). Backend boots without
+  # this container — LivekitService.isAvailable() returns false and the
+  # /voice/* routes report unavailable rather than crash. Add to the
+  # running stack any time after Phase 0 deploys; needs UDP 50000-50100
+  # opened on the VPS firewall to keikaku for media to flow, plus the
+  # TURN-over-TLS proxy at turn.atlas.labmgm.org:443 (see nginx.conf
+  # draft) for corporate-firewall traversal.
+  atlas-livekit:
+    image: livekit/livekit-server:latest
+    container_name: atlas-livekit
+    restart: always
+    command:
+      - --config
+      - /etc/livekit.yaml
+    environment:
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+    volumes:
+      - ./services/livekit/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      # Signaling (proxied at https://atlas.labmgm.org/livekit by nginx)
+      - "${LIVEKIT_HOST_PORT:-7880}:7880"
+      # TCP fallback for clients behind UDP-blocking firewalls
+      - "7881:7881"
+      # TURN-over-TLS (proxied at turn.atlas.labmgm.org:443 by nginx)
+      - "5349:5349"
+      # RTC media — must also be opened on the VPS firewall to keikaku
+      - "50000-50100:50000-50100/udp"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7880/ > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
