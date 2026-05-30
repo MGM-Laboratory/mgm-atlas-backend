@@ -85,4 +85,9 @@ export class UpdateVoicePreferencesDto {
   @IsString()
   @MaxLength(64)
   shortcutDisconnect?: string | null;
+
+  /** Phase 7: subtle join/leave/mute chimes. On by default. */
+  @IsOptional()
+  @IsBoolean()
+  soundsEnabled?: boolean;
 }

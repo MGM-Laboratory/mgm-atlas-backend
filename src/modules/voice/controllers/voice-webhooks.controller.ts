@@ -5,6 +5,7 @@ import { Public } from '@/common/decorators/public.decorator';
 import { LivekitService } from '../services/livekit.service';
 import { VoiceParticipantsService } from '../services/voice-participants.service';
 import { VoiceRealtimePublisher } from '../services/voice-realtime.publisher';
+import { VoiceRecordingService } from '../services/voice-recording.service';
 
 interface LivekitWebhookEvent {
   event: string;
@@ -17,6 +18,27 @@ interface LivekitWebhookEvent {
    * (screen-share badge on the sidebar for non-room observers).
    */
   track?: { sid?: string; source?: string; type?: string };
+  /**
+   * EgressInfo on egress_started / egress_updated / egress_ended.
+   * `status` enumerates EGRESS_STARTING/_ACTIVE/_ENDING/_COMPLETE/_FAILED/_ABORTED.
+   * `file` carries the final S3 result on completion.
+   */
+  egressInfo?: {
+    egressId?: string;
+    roomName?: string;
+    status?: string;
+    error?: string;
+    startedAt?: string | number | bigint;
+    endedAt?: string | number | bigint;
+    fileResults?: Array<{
+      duration?: string | number | bigint;
+      size?: string | number | bigint;
+    }>;
+    file?: {
+      duration?: string | number | bigint;
+      size?: string | number | bigint;
+    };
+  };
 }
 
 /**
@@ -42,6 +64,7 @@ export class VoiceWebhooksController {
     private readonly livekit: LivekitService,
     private readonly participants: VoiceParticipantsService,
     private readonly realtime: VoiceRealtimePublisher,
+    private readonly recording: VoiceRecordingService,
   ) {}
 
   @Public()
@@ -107,7 +130,44 @@ export class VoiceWebhooksController {
         });
         break;
       }
-      // recording_* events handled in Phase 7.
+      case 'egress_started':
+      case 'egress_updated': {
+        const egressId = event.egressInfo?.egressId ?? '';
+        if (!egressId) break;
+        const status = (event.egressInfo?.status ?? '').toUpperCase();
+        // EGRESS_ACTIVE = the recording is actually rolling. Treat
+        // STARTING the same way for the UI's purposes — the row was
+        // PENDING before the worker picked it up.
+        if (status === 'EGRESS_ACTIVE' || status === 'EGRESS_STARTING') {
+          await this.recording.onEgressStarted(egressId);
+        }
+        break;
+      }
+      case 'egress_ended': {
+        const egressId = event.egressInfo?.egressId ?? '';
+        if (!egressId) break;
+        const status = (event.egressInfo?.status ?? '').toUpperCase();
+        const success = status === 'EGRESS_COMPLETE';
+        // Pull the duration/size from either fileResults[0] (newer
+        // SDK) or file (older). Values may arrive as bigints/strings.
+        const fileSrc = event.egressInfo?.fileResults?.[0] ?? event.egressInfo?.file;
+        const durationRaw = fileSrc?.duration;
+        const sizeRaw = fileSrc?.size;
+        const durationSec =
+          durationRaw !== undefined
+            ? Math.round(Number(durationRaw.toString()) / 1_000_000_000) // ns → s
+            : undefined;
+        const sizeBytes =
+          sizeRaw !== undefined ? BigInt(sizeRaw.toString()) : undefined;
+        await this.recording.onEgressEnded({
+          egressId,
+          success,
+          durationSec,
+          sizeBytes,
+          error: event.egressInfo?.error,
+        });
+        break;
+      }
       default:
         break;
     }

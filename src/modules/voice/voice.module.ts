@@ -8,6 +8,7 @@ import { VoiceJoinController } from './controllers/voice-join.controller';
 import { VoiceLobbyController } from './controllers/voice-lobby.controller';
 import { VoiceModerationController } from './controllers/voice-moderation.controller';
 import { VoicePreferencesController } from './controllers/voice-preferences.controller';
+import { VoiceRecordingController } from './controllers/voice-recording.controller';
 import { VoiceSoundboardController } from './controllers/voice-soundboard.controller';
 import { VoiceWebhooksController } from './controllers/voice-webhooks.controller';
 import { VoiceGateway } from './gateway/voice.gateway';
@@ -18,6 +19,7 @@ import { VoiceModerationService } from './services/voice-moderation.service';
 import { VoiceParticipantsService } from './services/voice-participants.service';
 import { VoicePreferencesService } from './services/voice-preferences.service';
 import { VoiceRealtimePublisher } from './services/voice-realtime.publisher';
+import { VoiceRecordingService } from './services/voice-recording.service';
 import { VoiceSoundboardService } from './services/voice-soundboard.service';
 
 /**
@@ -42,6 +44,7 @@ import { VoiceSoundboardService } from './services/voice-soundboard.service';
     VoiceJoinController,
     VoiceModerationController,
     VoicePreferencesController,
+    VoiceRecordingController,
     VoiceSoundboardController,
     VoiceWebhooksController,
   ],
@@ -53,6 +56,7 @@ import { VoiceSoundboardService } from './services/voice-soundboard.service';
     VoiceParticipantsService,
     VoicePreferencesService,
     VoiceRealtimePublisher,
+    VoiceRecordingService,
     VoiceSoundboardService,
     VoiceGateway,
   ],
@@ -64,6 +68,7 @@ import { VoiceSoundboardService } from './services/voice-soundboard.service';
     VoiceParticipantsService,
     VoicePreferencesService,
     VoiceRealtimePublisher,
+    VoiceRecordingService,
     VoiceSoundboardService,
   ],
 })

@@ -91,3 +91,48 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+
+  # LiveKit Egress worker for Atlas voice chat recording (Phase 7).
+  # Records room composite egress to S3 via the EgressClient calls
+  # the backend makes (POST /voice/channels/:id/recording/start).
+  # Backend boots fine without this container — startRoomCompositeEgress
+  # then returns null and the controller surfaces a clean 503.
+  #
+  # The egress worker needs:
+  #   - LIVEKIT_WS_URL : ws://atlas-livekit:7880 (SFU on the docker network)
+  #   - LIVEKIT_API_KEY / LIVEKIT_API_SECRET : same as the SFU's keys
+  #   - REDIS_URL : coordinates with the SFU; reuses the keikaku Redis
+  #
+  # The container ships Chromium for room composite rendering — needs
+  # ~1GB RAM headroom. Keikaku has plenty.
+  atlas-livekit-egress:
+    image: livekit/egress:latest
+    container_name: atlas-livekit-egress
+    restart: always
+    environment:
+      # Egress reads its config from EGRESS_CONFIG_BODY (YAML inline)
+      # so we don't have to mount a file.
+      EGRESS_CONFIG_BODY: |
+        log_level: info
+        api_key: ${LIVEKIT_API_KEY}
+        api_secret: ${LIVEKIT_API_SECRET}
+        ws_url: ws://atlas-livekit:7880
+        redis:
+          address: mgm-atlas-redis:6379
+        # S3 creds default to the AWS env vars (set in .env) so we don't
+        # have to duplicate them here. EncodedFileOutput in the start
+        # request also carries its own copy as a belt-and-suspenders.
+    healthcheck:
+      test: ["CMD", "egress", "--health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    cap_add:
+      # Chromium sandbox needs SYS_ADMIN. Required by livekit/egress.
+      - SYS_ADMIN
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
