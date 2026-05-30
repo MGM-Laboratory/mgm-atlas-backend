@@ -82,6 +82,13 @@ enum VoiceAudioQuality {
   HIGH
 }
 
+enum VoiceInputMode {
+  /// Mic is open whenever the user is unmuted (default; matches Discord's voice activity).
+  VOICE_ACTIVITY
+  /// Mic is closed until the user holds the configured push-to-talk key.
+  PUSH_TO_TALK
+}
+
 // ─── Chat enums ──────────────────────────────────────────────────────────
 
 enum ChatMessageKind {
@@ -148,6 +155,7 @@ model User {
   voiceChannelsCreated           VoiceChannel[]          @relation("VoiceChannelCreator")
   voiceParticipations            VoiceParticipant[]
   voiceSoundboardClipsUploaded   VoiceSoundboardClip[]   @relation("VoiceSoundboardUploader")
+  voicePreferences               VoiceUserPreferences?
 
   @@index([email])
   @@index([isAdmin])
@@ -1038,4 +1046,42 @@ model VoiceSoundboardClip {
   uploadedBy User @relation("VoiceSoundboardUploader", fields: [uploadedById], references: [id])
 
   @@index([uploadedById])
+}
+
+/// Per-user voice settings — persisted across browsers + devices.
+/// One row per User; lazily created on first GET if missing.
+model VoiceUserPreferences {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// VOICE_ACTIVITY (default) or PUSH_TO_TALK.
+  inputMode    VoiceInputMode @default(VOICE_ACTIVITY)
+  /// KeyboardEvent.code string (e.g. "Space", "AltLeft"). Used only when inputMode = PUSH_TO_TALK.
+  pttKey       String?
+  /// How long after keyup the mic stays open (ms). Prevents cut-off word endings.
+  pttReleaseMs Int            @default(150)
+
+  /// Web Audio constraints (passed to LiveKit Room.audioCaptureDefaults).
+  noiseSuppression Boolean @default(true)
+  echoCancellation Boolean @default(true)
+  autoGainControl  Boolean @default(true)
+
+  /// Device-id remembered between sessions. null = system default.
+  micDeviceId    String?
+  cameraDeviceId String?
+  outputDeviceId String?
+
+  /// 0-200 (100 = unity). Applied client-side: mic via gain node, output via track setVolume.
+  micVolume    Int @default(100)
+  outputVolume Int @default(100)
+
+  /// Optional user-customizable global keyboard bindings.
+  /// Stored as strings like "ctrl+shift+m"; empty/null = use defaults.
+  shortcutMute       String? @default("ctrl+shift+m")
+  shortcutDeafen     String? @default("ctrl+shift+d")
+  shortcutDisconnect String? @default("ctrl+shift+h")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
