@@ -1,69 +1,47 @@
-# LiveKit server configuration for Atlas voice chat.
+# LiveKit server config for Atlas voice chat (Phase 0).
 #
-# Runs on keikaku alongside atlas-backend / atlas-y-websocket. Loaded by
-# the upstream livekit/livekit-server image via `--config /etc/livekit.yaml`.
-# Phase 0 ships this file; the container is added to docker-compose.yml
-# alongside this. The backend boots fine without LiveKit (gracefully
-# degrades via LivekitService.isAvailable()), so the container can be
-# brought up at any time without coordination.
+# Architecture: keikaku is Tailscale-only (no public IP). Public traffic
+# reaches LiveKit via the subnet-router VPS (public IP 103.196.153.62),
+# which proxies signaling (WSS) over /livekit/ and forwards UDP/TCP/7882
+# over Tailscale to this container.
 #
-# Ports:
-#   7880/tcp  — HTTP API + WebSocket signaling (proxied as /livekit/ on
-#               atlas.labmgm.org)
-#   7881/tcp  — TCP fallback for clients behind UDP-blocking firewalls
-#               that can't use TURN-TLS
-#   50000-50100/udp — RTC media (open these to keikaku at the VPS firewall)
-#   5349/tcp  — TURN-over-TLS listener (proxied at turn.atlas.labmgm.org:443
-#               for corporate-firewall traversal — HARD REQUIREMENT)
+# UDP Mux: a single UDP port (7882) carries ALL WebRTC media for ALL
+# clients/rooms. LiveKit's built-in mux demultiplexes by session at the
+# application layer. This means the VPS only needs to forward ONE UDP
+# port (not the usual 50000-50100 range), the VPS firewall only needs
+# ONE rule, and Tailscale only carries one UDP flow per concurrent
+# participant.
 
 port: 7880
 
 rtc:
-  tcp_port: 7881
-  port_range_start: 50000
-  port_range_end: 50100
-  # use_external_ip ensures LiveKit advertises the public IP of the VPS
-  # (not keikaku's Tailscale-internal address) in ICE candidates so
-  # browsers can actually reach the media ports.
-  use_external_ip: true
+  # Single UDP port for all media (UDP Mux).
+  udp_port: 7882
+  # TCP fallback for clients on UDP-blocking networks. Shares the same
+  # 7882 port so the VPS only needs one stream rule to handle both.
+  tcp_port: 7882
+  # Skip STUN — LiveKit would otherwise discover keikaku's egress IP,
+  # which is wrong (clients can't reach keikaku directly). Use the
+  # explicit NAT 1:1 mapping below.
+  use_external_ip: false
+  # Tell LiveKit to advertise the VPS public IP in ICE candidates
+  # (clients send media to <VPS_PUBLIC_IP>:7882, which the VPS
+  # forwards to us over Tailscale).
+  node_ip: 103.196.153.62
 
-# Webhook deliveries to the Atlas backend. Backend verifies via
-# LIVEKIT_WEBHOOK_KEY (HMAC).
-webhook:
-  api_key: ${LIVEKIT_API_KEY}
-  urls:
-    - http://atlas-backend:3000/api/v1/voice/livekit/webhook
+# TURN-TLS is deferred to Phase 7 polish — UDP Mux on a single
+# public port handles ~80%+ of real-world clients without needing
+# TURN. Corporate-firewall traversal becomes a Phase 7 problem.
 
-# API keys. In compose this is templated from .env so the same secret is
-# shared with the backend's LIVEKIT_API_KEY / LIVEKIT_API_SECRET.
-keys:
-  ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
-
-# TURN-over-TLS — HARD REQUIREMENT for corporate-firewall traversal.
-# The VPS nginx terminates TLS at turn.atlas.labmgm.org:443 and proxies
-# to keikaku:5349. LiveKit itself only sees plain TCP.
-turn:
-  enabled: true
-  domain: turn.atlas.labmgm.org
-  tls_port: 5349
-  # Loadbalancer-style: TLS is terminated upstream (nginx), so LiveKit
-  # serves plain TCP here. Do NOT supply cert_file/key_file — the nginx
-  # block in ~/lab/atlas/nginx.conf provides them.
-
-# Room defaults. Per-channel `audioQuality` (LOW/STANDARD/HIGH) maps to
-# different audio bitrate targets enforced client-side at publish time.
 room:
   enabled_codecs:
     - mime: audio/opus
     - mime: video/vp8
     - mime: video/h264
-  # Max participants per room is enforced application-side (channel
-  # userLimit). LiveKit's hard cap stays generous.
   max_participants: 100
-  empty_timeout: 300 # delete empty room after 5min
-  departure_timeout: 20 # delete after last participant leaves
+  empty_timeout: 300
+  departure_timeout: 20
 
-# Logging
 logging:
   level: info
   pion_level: warn
