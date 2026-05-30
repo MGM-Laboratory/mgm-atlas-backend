@@ -23,7 +23,10 @@ export class ChatChannelsService {
 
   list(projectId: string) {
     return this.prisma.chatChannel.findMany({
-      where: { projectId },
+      // Voice-thread channels (§10 of voice spec) live in the same
+      // table but are never user-facing through the chat sidebar —
+      // they're only reachable from inside their paired voice channel.
+      where: { projectId, isVoiceThread: false },
       orderBy: [{ isGeneral: 'desc' }, { isArchived: 'asc' }, { createdAt: 'asc' }],
       select: this.publicSelect,
     });

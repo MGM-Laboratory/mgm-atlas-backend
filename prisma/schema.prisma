@@ -431,6 +431,12 @@ model ChatChannel {
   topic       String?
   isGeneral   Boolean   @default(false)
   isArchived  Boolean   @default(false)
+  /// When true, this channel is the per-voice-channel text thread (§10).
+  /// It is HIDDEN from the regular project text-channel list — only
+  /// reachable from inside its paired voice channel's room. Reuses
+  /// every existing chat surface (messages, attachments, reactions,
+  /// pins, link previews) without modification.
+  isVoiceThread Boolean @default(false)
   createdById String
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -448,6 +454,7 @@ model ChatChannel {
 
   @@unique([projectId, name])
   @@index([projectId, isArchived])
+  @@index([projectId, isVoiceThread])
 }
 
 model ChatChannelMember {
