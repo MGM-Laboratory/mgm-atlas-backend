@@ -62,6 +62,11 @@ export class VoiceGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     }
     socket.data.user = user;
     socket.data.projects = new Set<string>();
+    // Every socket joins its own user:<id> room so the realtime
+    // publisher can emit personally-addressed events (force-mute,
+    // forced move with a freshly-minted JWT, kick toast, etc.).
+    // The user only sees events meant for them, even across tabs.
+    await socket.join(`user:${user.id}`);
     this.logger.debug(`voice connect user=${user.id} sock=${socket.id}`);
   }
 

@@ -117,4 +117,96 @@ export class VoiceRealtimePublisher {
       ...payload,
     });
   }
+
+  // ─── Moderation fanout (Phase 5) ────────────────────────────────────
+
+  /**
+   * Mod muted/unmuted a participant server-side. Peers in the channel
+   * update the badge instantly; the targeted user sees they've been
+   * force-muted by a mod.
+   */
+  moderationMute(
+    channelId: string,
+    _projectId: string | null,
+    payload: { targetUserId: string; muted: boolean; byUserId: string },
+  ): void {
+    this.emit(this.channelRoom(channelId), 'voice.moderation.mute', {
+      channelId,
+      ...payload,
+    });
+  }
+
+  /**
+   * Mod kicked a participant. The targeted user's LiveKit room
+   * already disconnected (RoomServiceClient.removeParticipant fires
+   * a server-side disconnect), so this event is mainly for the
+   * channel-list roster + toast on the kicked user's side.
+   */
+  moderationKick(
+    channelId: string,
+    _projectId: string | null,
+    payload: {
+      targetUserId: string;
+      byUserId: string;
+      reason: string | null;
+    },
+  ): void {
+    this.emit(this.channelRoom(channelId), 'voice.moderation.kick', {
+      channelId,
+      ...payload,
+    });
+    // Also emit a personally-addressed event so the kicked user's
+    // active tab (which may have already left the LiveKit room) gets
+    // the toast even if they were the only one in the channel.
+    this.emit(this.userRoom(payload.targetUserId), 'voice.moved-or-kicked', {
+      kind: 'kicked',
+      channelId,
+      reason: payload.reason,
+    });
+  }
+
+  /**
+   * Mod moved a participant to a different channel. The TARGET user
+   * gets a personally-addressed event with the minted LiveKit token
+   * for the destination room — the client connects without an extra
+   * REST roundtrip.
+   */
+  moderationMove(
+    targetChannelId: string,
+    targetProjectId: string | null,
+    payload: {
+      targetUserId: string;
+      sourceChannelId: string;
+      targetChannelId: string;
+      targetChannelName: string;
+      byUserId: string;
+      url: string;
+      token: string;
+    },
+  ): void {
+    // Channel-level event so peers in the target channel see the
+    // roster update; doesn't carry the JWT (everyone would see it).
+    this.emit(this.channelRoom(targetChannelId), 'voice.moderation.move', {
+      channelId: targetChannelId,
+      sourceChannelId: payload.sourceChannelId,
+      targetUserId: payload.targetUserId,
+      byUserId: payload.byUserId,
+    });
+    // Personally-addressed event with the JWT — only the targeted
+    // user's sockets see this.
+    this.emit(this.userRoom(payload.targetUserId), 'voice.moved-or-kicked', {
+      kind: 'moved',
+      sourceChannelId: payload.sourceChannelId,
+      targetChannelId: payload.targetChannelId,
+      targetChannelName: payload.targetChannelName,
+      projectId: targetProjectId,
+      url: payload.url,
+      token: payload.token,
+    });
+  }
+
+  /** Per-user broadcast room used for personally-addressed events. */
+  private userRoom(userId: string) {
+    return `user:${userId}`;
+  }
 }
