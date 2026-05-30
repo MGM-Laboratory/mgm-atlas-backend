@@ -85,6 +85,31 @@ export class LivekitService {
       metadata: args.metadata ? JSON.stringify(args.metadata) : undefined,
       ttl: args.ttlSec ?? this.jwtTtlSec,
     });
+    // livekit-server-sdk v2 wants `canPublishSources` as the numeric
+    // TrackSource enum (re-exported from @livekit/protocol), NOT the
+    // lowercase strings. Passing strings here makes toJwt() throw
+    // "Cannot convert TrackSource microphone to string" because it
+    // tries to invert-lookup the enum at serialization time.
+    //
+    // Map our public string API to enum values via sdk.TrackSource.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TS = (sdk as any).TrackSource as Record<string, number> | undefined;
+    const stringSources = args.canPublishSources ?? [
+      'microphone',
+      'camera',
+      'screen_share',
+      'screen_share_audio',
+    ];
+    const STRING_TO_ENUM: Record<string, string> = {
+      microphone: 'MICROPHONE',
+      camera: 'CAMERA',
+      screen_share: 'SCREEN_SHARE',
+      screen_share_audio: 'SCREEN_SHARE_AUDIO',
+    };
+    const enumSources = TS
+      ? stringSources.map((s) => TS[STRING_TO_ENUM[s] ?? '']).filter((v) => v !== undefined)
+      : undefined;
+
     at.addGrant({
       roomJoin: true,
       room: args.roomName,
@@ -95,12 +120,8 @@ export class LivekitService {
       // default to the full Phase 2 set: mic + camera + screen share
       // (video + audio). Phase 5 will derive this from the channel's
       // per-role permissions JSON before minting the token.
-      canPublishSources: args.canPublishSources ?? [
-        'microphone',
-        'camera',
-        'screen_share',
-        'screen_share_audio',
-      ],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ...(enumSources ? { canPublishSources: enumSources as any } : {}),
     });
     return at.toJwt();
   }
