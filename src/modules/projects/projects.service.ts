@@ -1,9 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma, Project, ProjectVisibility } from '@prisma/client';
 import { paginate } from '@/common/dto/pagination.dto';
 import { AuthenticatedUser } from '@/common/types/authenticated-user.type';
 import { toUniqueSlug } from '@/common/utils/slug.util';
 import { PrismaService } from '@/prisma/prisma.service';
+import { VoiceChannelsService } from '@/modules/voice/services/voice-channels.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { ListProjectsDto } from './dto/list-projects.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
@@ -47,7 +49,11 @@ const DETAIL_INCLUDE = {
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+    private readonly voiceChannels: VoiceChannelsService,
+  ) {}
 
   // ─── Create ────────────────────────────────────────────────────────────
 
@@ -87,20 +93,37 @@ export class ProjectsService {
           createdById: user.id,
         },
       });
+      // Auto-create the default voice channel — gated by the feature
+      // flag so VOICE_ENABLED=false makes new projects identical to
+      // pre-voice projects (no orphan VoiceChannel rows).
+      if (this.config.get<boolean>('voice.enabled', false)) {
+        await this.voiceChannels.createDefaultForProject(tx, {
+          projectId: project.id,
+          createdById: user.id,
+        });
+      }
       return project;
     });
   }
 
   // ─── Read (single) ─────────────────────────────────────────────────────
 
-  async findOne(projectId: string, access: ProjectAccess) {
+  async findOne(projectId: string, access: ProjectAccess, userId?: string) {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, deletedAt: null },
       include: DETAIL_INCLUDE,
     });
     if (!project) throw new NotFoundException('Project not found.');
 
-    return this.shapeForAccess(project, access);
+    let bookmarked = false;
+    if (userId) {
+      const bm = await this.prisma.bookmark.findUnique({
+        where: { userId_projectId: { userId, projectId: project.id } },
+        select: { userId: true },
+      });
+      bookmarked = !!bm;
+    }
+    return { ...this.shapeForAccess(project, access), bookmarked };
   }
 
   // ─── Read (list / discovery) ───────────────────────────────────────────

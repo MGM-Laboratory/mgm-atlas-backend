@@ -69,6 +69,17 @@ enum NotificationType {
   TASK_DEPENDENCY_BLOCKED
   NOTE_MENTIONED
   WHITEBOARD_MENTIONED
+  // Voice additions — appended only; never reorder existing values.
+  VOICE_PARTICIPANT_JOINED
+  VOICE_MENTIONED
+}
+
+// ─── Voice enums ─────────────────────────────────────────────────────────
+
+enum VoiceAudioQuality {
+  LOW
+  STANDARD
+  HIGH
 }
 
 // ─── Chat enums ──────────────────────────────────────────────────────────
@@ -133,6 +144,10 @@ model User {
   projectFilesUploaded           ProjectFile[]           @relation("ProjectFileUploader")
   projectNotesCreated            ProjectNote[]           @relation("ProjectNoteCreator")
   whiteboardsCreated             Whiteboard[]            @relation("WhiteboardCreator")
+  // Voice back-relations (no DB impact; Prisma-only).
+  voiceChannelsCreated           VoiceChannel[]          @relation("VoiceChannelCreator")
+  voiceParticipations            VoiceParticipant[]
+  voiceSoundboardClipsUploaded   VoiceSoundboardClip[]   @relation("VoiceSoundboardUploader")
 
   @@index([email])
   @@index([isAdmin])
@@ -215,6 +230,8 @@ model Project {
   files                ProjectFile[]
   notes                ProjectNote[]
   whiteboards          Whiteboard[]
+  // Voice back-relations.
+  voiceChannels        VoiceChannel[]
 
   @@index([visibility, phase])
   @@index([ownerId])
@@ -416,6 +433,10 @@ model ChatChannel {
   messages  ChatMessage[]
   members   ChatChannelMember[]
   pinned    ChatPinned[]
+  // Voice back-relation: when this channel is the per-voice-channel
+  // text thread (§10), the linked VoiceChannel owns the FK. Prisma-only;
+  // no DB impact (the column lives on VoiceChannel.textThreadId).
+  voiceChannel VoiceChannel?    @relation("VoiceTextThread")
 
   @@unique([projectId, name])
   @@index([projectId, isArchived])
@@ -943,4 +964,78 @@ model YDocSnapshot {
   createdAt DateTime @default(now())
 
   @@index([docKey])
+}
+
+// ─── Voice (Discord-parity voice/video/screen-share) ─────────────────────
+// Feature-flagged by VOICE_ENABLED. Schema ships dark in Phase 0 so prod
+// boots unchanged. LiveKit room identity is "voice:<channelId>"
+// (deterministic — no separate Room table).
+
+model VoiceChannel {
+  id           String            @id @default(uuid())
+  /// Null = workspace lobby (any authenticated user can join).
+  projectId    String?
+  name         String
+  /// Discord-style status / topic line shown next to the channel.
+  topic        String?
+  /// null = unlimited
+  userLimit    Int?
+  audioQuality VoiceAudioQuality @default(STANDARD)
+  /// True for the channel auto-created with a project (or the lobby default).
+  isDefault    Boolean           @default(false)
+  sortIndex    Int               @default(0)
+  /// Per-role permission map. Shape:
+  /// { PROJECT_MANAGER: {connect,speak,video,screen,soundboard},
+  ///   CONTRIBUTOR:     {connect,speak,video,screen,soundboard} }
+  /// Empty object = use sane defaults (everyone can do everything).
+  permissions  Json              @default("{}")
+  /// FK to the paired ChatChannel that backs this voice channel's text
+  /// thread (§10). Populated in Phase 4; null until then.
+  textThreadId String?           @unique
+  createdById  String
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  archivedAt   DateTime?
+
+  project      Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy    User               @relation("VoiceChannelCreator", fields: [createdById], references: [id])
+  textThread   ChatChannel?       @relation("VoiceTextThread", fields: [textThreadId], references: [id])
+  participants VoiceParticipant[]
+
+  @@index([projectId, archivedAt])
+  @@index([projectId, sortIndex])
+}
+
+model VoiceParticipant {
+  id         String    @id @default(uuid())
+  channelId  String
+  userId     String
+  joinedAt   DateTime  @default(now())
+  /// Set when the user leaves (gracefully or via LiveKit webhook reconciliation).
+  /// Null means "currently connected" — that's how we count live occupants.
+  leftAt     DateTime?
+  /// LiveKit participant SID for moderation API lookups.
+  livekitSid String?
+  /// True if a moderator has server-side muted this participant.
+  mutedByMod Boolean   @default(false)
+
+  channel VoiceChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, leftAt])
+  @@index([userId, leftAt])
+}
+
+model VoiceSoundboardClip {
+  id           String   @id @default(uuid())
+  name         String
+  s3Key        String
+  url          String
+  durationMs   Int
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  uploadedBy User @relation("VoiceSoundboardUploader", fields: [uploadedById], references: [id])
+
+  @@index([uploadedById])
 }

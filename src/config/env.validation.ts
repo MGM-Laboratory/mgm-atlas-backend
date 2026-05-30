@@ -207,6 +207,45 @@ class EnvVars {
   @IsOptional()
   @IsInt()
   YJS_SNAPSHOT_DEBOUNCE_MS?: number;
+
+  // ─── Voice chat (LiveKit; all optional so VOICE_ENABLED=false ships dark) ──
+  // VOICE_ENABLED=false → every /voice/* route 404s and no LiveKit
+  // connection is attempted. The other vars are only consulted when
+  // VOICE_ENABLED=true; an empty LIVEKIT_URL causes the feature to
+  // report "unavailable" rather than crashing.
+  @IsOptional()
+  @IsString()
+  VOICE_ENABLED?: string;
+
+  @IsOptional()
+  @IsString()
+  LIVEKIT_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  LIVEKIT_API_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  LIVEKIT_API_SECRET?: string;
+
+  /// HMAC secret LiveKit signs its webhook deliveries with.
+  @IsOptional()
+  @IsString()
+  LIVEKIT_WEBHOOK_KEY?: string;
+
+  @IsOptional()
+  @IsInt()
+  VOICE_JWT_TTL_SECONDS?: number;
+
+  @IsOptional()
+  @IsInt()
+  VOICE_DEFAULT_USER_LIMIT?: number;
+
+  /// Phase 7 (recording). Default 30d retention; 0 = keep forever.
+  @IsOptional()
+  @IsInt()
+  VOICE_RECORDING_RETENTION_DAYS?: number;
 }
 
 export function validateEnv(raw: Record<string, unknown>) {
