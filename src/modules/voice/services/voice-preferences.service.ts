@@ -46,6 +46,7 @@ export class VoicePreferencesService {
     if (dto.shortcutDeafen !== undefined) data.shortcutDeafen = dto.shortcutDeafen || null;
     if (dto.shortcutDisconnect !== undefined)
       data.shortcutDisconnect = dto.shortcutDisconnect || null;
+    if (dto.soundsEnabled !== undefined) data.soundsEnabled = dto.soundsEnabled;
 
     return this.prisma.voiceUserPreferences.upsert({
       where: { userId },
@@ -83,6 +84,7 @@ export class VoicePreferencesService {
         ...(dto.shortcutDisconnect !== undefined
           ? { shortcutDisconnect: dto.shortcutDisconnect || null }
           : {}),
+        ...(dto.soundsEnabled !== undefined ? { soundsEnabled: dto.soundsEnabled } : {}),
       },
       update: data,
     });

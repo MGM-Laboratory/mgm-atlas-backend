@@ -209,4 +209,61 @@ export class VoiceRealtimePublisher {
   private userRoom(userId: string) {
     return `user:${userId}`;
   }
+
+  // ─── Recording lifecycle (Phase 7) ──────────────────────────────────
+
+  /**
+   * A moderator just requested a recording. Sent to the channel so
+   * peers can render the red REC badge + consent banner immediately
+   * (even before LiveKit's egress_started webhook arrives).
+   */
+  recordingStarted(
+    channelId: string,
+    _projectId: string | null,
+    payload: {
+      recordingId: string;
+      startedByUserId: string;
+      startedByName: string;
+    },
+  ): void {
+    this.emit(this.channelRoom(channelId), 'voice.recording.started', {
+      channelId,
+      ...payload,
+    });
+  }
+
+  /**
+   * Lifecycle update from the egress webhook (PENDING → RUNNING). The
+   * UI doesn't usually need to distinguish PENDING vs RUNNING, but
+   * keeping the wire shape symmetrical helps debugging.
+   */
+  recordingStatusChanged(
+    channelId: string,
+    _projectId: string | null,
+    payload: { recordingId: string; status: 'RUNNING' | 'COMPLETED' | 'FAILED' },
+  ): void {
+    this.emit(this.channelRoom(channelId), 'voice.recording.status', {
+      channelId,
+      ...payload,
+    });
+  }
+
+  /**
+   * egress_ended arrived (success or failure). UI removes the REC
+   * badge + shows a toast.
+   */
+  recordingStopped(
+    channelId: string,
+    _projectId: string | null,
+    payload: {
+      recordingId: string;
+      success: boolean;
+      durationSec: number | null;
+    },
+  ): void {
+    this.emit(this.channelRoom(channelId), 'voice.recording.stopped', {
+      channelId,
+      ...payload,
+    });
+  }
 }

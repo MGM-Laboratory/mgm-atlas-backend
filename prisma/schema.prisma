@@ -89,6 +89,17 @@ enum VoiceInputMode {
   PUSH_TO_TALK
 }
 
+enum VoiceRecordingStatus {
+  /// Backend has issued the egress request but LiveKit hasn't confirmed yet.
+  PENDING
+  /// LiveKit is actively recording. Webhook egress_started fired.
+  RUNNING
+  /// LiveKit finished and uploaded to S3. s3Key + durationSec set.
+  COMPLETED
+  /// LiveKit reported an error or upload failed.
+  FAILED
+}
+
 // ─── Chat enums ──────────────────────────────────────────────────────────
 
 enum ChatMessageKind {
@@ -156,6 +167,7 @@ model User {
   voiceParticipations            VoiceParticipant[]
   voiceSoundboardClipsUploaded   VoiceSoundboardClip[]   @relation("VoiceSoundboardUploader")
   voicePreferences               VoiceUserPreferences?
+  voiceRecordingsStarted         VoiceRecording[]        @relation("VoiceRecordingStarter")
 
   @@index([email])
   @@index([isAdmin])
@@ -1016,6 +1028,7 @@ model VoiceChannel {
   createdBy    User               @relation("VoiceChannelCreator", fields: [createdById], references: [id])
   textThread   ChatChannel?       @relation("VoiceTextThread", fields: [textThreadId], references: [id])
   participants VoiceParticipant[]
+  recordings   VoiceRecording[]
 
   @@index([projectId, archivedAt])
   @@index([projectId, sortIndex])
@@ -1089,6 +1102,38 @@ model VoiceUserPreferences {
   shortcutDeafen     String? @default("ctrl+shift+d")
   shortcutDisconnect String? @default("ctrl+shift+h")
 
+  /// Phase 7 — subtle join/leave/mute chimes. On by default.
+  soundsEnabled Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Per-recording row created when a moderator starts a LiveKit egress
+/// for a voice channel. State is driven by LiveKit webhooks
+/// (egress_started → RUNNING, egress_ended → COMPLETED or FAILED).
+model VoiceRecording {
+  id              String               @id @default(uuid())
+  channelId       String
+  startedByUserId String
+  /// LiveKit egress id — the handle we use to stop the recording.
+  egressId        String               @unique
+  status          VoiceRecordingStatus @default(PENDING)
+  startedAt       DateTime             @default(now())
+  endedAt         DateTime?
+  /// Set when LiveKit reports egress_ended with a file output.
+  s3Key           String?
+  durationSec     Int?
+  sizeBytes       BigInt?
+  /// Optional explicit retention boundary; null = use system default.
+  retentionUntil  DateTime?
+  /// Free-form error message when status = FAILED.
+  errorMessage    String?
+
+  channel   VoiceChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  startedBy User         @relation("VoiceRecordingStarter", fields: [startedByUserId], references: [id])
+
+  @@index([channelId, startedAt])
+  @@index([status])
+  @@index([retentionUntil])
 }

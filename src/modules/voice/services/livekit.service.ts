@@ -36,6 +36,8 @@ export class LivekitService {
   private roomService: any = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private webhookReceiver: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private egressClient: any = null;
 
   constructor(config: ConfigService) {
     this.enabled = config.get<boolean>('voice.enabled', false);
@@ -135,6 +137,98 @@ export class LivekitService {
     if (!sdk) return null;
     this.roomService = new sdk.RoomServiceClient(this.url, this.apiKey, this.apiSecret);
     return this.roomService;
+  }
+
+  /**
+   * Lazily-initialized EgressClient. Null when LiveKit isn't available
+   * OR when the deploy hasn't been given LiveKit Egress credentials
+   * (egress runs as a separate container that polls the SFU via Redis).
+   *
+   * The EgressClient itself just sends RPCs to LiveKit; the egress
+   * worker is what actually records. As long as the SFU URL is reachable
+   * and an egress worker is running on the same Redis, this works.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async getEgressClient(): Promise<any> {
+    if (!this.isAvailable()) return null;
+    if (this.egressClient) return this.egressClient;
+    const sdk = await this.loadSdk();
+    if (!sdk) return null;
+    if (!sdk.EgressClient) return null;
+    this.egressClient = new sdk.EgressClient(this.url, this.apiKey, this.apiSecret);
+    return this.egressClient;
+  }
+
+  /**
+   * Start a room composite egress (mixed audio + video) and upload the
+   * result to S3. Audio-only is selected via `audioOnly: true` in
+   * options — useful when the channel hasn't enabled video.
+   *
+   * Caller is responsible for the gate (mod-only) and for persisting
+   * the returned egressId. We pass S3 credentials in the request so
+   * the egress worker doesn't need them in its environment.
+   */
+  async startRoomCompositeEgress(args: {
+    roomName: string;
+    s3: {
+      accessKey: string;
+      secret: string;
+      region: string;
+      bucket: string;
+    };
+    filepath: string;
+    audioOnly?: boolean;
+  }): Promise<{ egressId: string } | null> {
+    const egress = await this.getEgressClient();
+    if (!egress) return null;
+    const sdk = await this.loadSdk();
+    if (!sdk) return null;
+
+    // LiveKit's request shape (livekit-server-sdk v2): a layout name,
+    // a file output, and an upload destination. We choose 'grid-light'
+    // for the room composite layout — the visual default in LiveKit's
+    // egress template that fits most calls.
+    const fileOutput = {
+      fileType: sdk.EncodedFileType?.MP4 ?? 1, // MP4 = 1 in the enum
+      filepath: args.filepath,
+      s3: {
+        accessKey: args.s3.accessKey,
+        secret: args.s3.secret,
+        region: args.s3.region,
+        bucket: args.s3.bucket,
+      },
+    };
+
+    try {
+      const info = await egress.startRoomCompositeEgress(
+        args.roomName,
+        {
+          file: fileOutput,
+        },
+        {
+          layout: 'grid',
+          audioOnly: args.audioOnly === true,
+          videoOnly: false,
+        },
+      );
+      return { egressId: info.egressId };
+    } catch (err) {
+      this.logger.warn(`startRoomCompositeEgress failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  /** Stop a running egress by id. Returns true on a successful stop request. */
+  async stopEgress(egressId: string): Promise<boolean> {
+    const egress = await this.getEgressClient();
+    if (!egress) return false;
+    try {
+      await egress.stopEgress(egressId);
+      return true;
+    } catch (err) {
+      this.logger.warn(`stopEgress(${egressId}) failed: ${(err as Error).message}`);
+      return false;
+    }
   }
 
   /**

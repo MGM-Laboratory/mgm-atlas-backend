@@ -1,5 +1,6 @@
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadBucketCommand,
   PutObjectCommand,
   S3Client,
@@ -61,6 +62,19 @@ export class S3Service {
     });
     const uploadUrl = await getSignedUrl(this.client, command, { expiresIn: this.presignTtl });
     return { uploadUrl, expiresIn: this.presignTtl };
+  }
+
+  /**
+   * Presigned GET URL for a stored object. Useful for download links
+   * that should expire (e.g. voice recordings — Phase 7).
+   * Default TTL is 5 minutes (`s3.presignTtl`).
+   */
+  async presignGet(key: string): Promise<{ downloadUrl: string; expiresIn: number }> {
+    const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
+    const downloadUrl = await getSignedUrl(this.client, command, {
+      expiresIn: this.presignTtl,
+    });
+    return { downloadUrl, expiresIn: this.presignTtl };
   }
 
   async deleteObject(key: string): Promise<void> {
