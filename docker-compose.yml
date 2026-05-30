@@ -50,11 +50,13 @@ services:
 
   # LiveKit SFU for Atlas voice chat (Phase 0). Backend boots without
   # this container — LivekitService.isAvailable() returns false and the
-  # /voice/* routes report unavailable rather than crash. Add to the
-  # running stack any time after Phase 0 deploys; needs UDP 50000-50100
-  # opened on the VPS firewall to keikaku for media to flow, plus the
-  # TURN-over-TLS proxy at turn.atlas.labmgm.org:443 (see nginx.conf
-  # draft) for corporate-firewall traversal.
+  # /voice/* routes report unavailable rather than crash.
+  #
+  # Network topology: keikaku has no public IP. The subnet-router VPS
+  # (public IP 103.196.153.62, runs nginx) forwards both signaling
+  # (HTTP/WSS via the http block) and media (UDP+TCP/7882 via the
+  # stream {} block) over Tailscale to this container. Media uses
+  # UDP Mux on a single port — see services/livekit/livekit.yaml.
   atlas-livekit:
     image: livekit/livekit-server:latest
     container_name: atlas-livekit
@@ -63,21 +65,23 @@ services:
       - --config
       - /etc/livekit.yaml
     environment:
-      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
-      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      # 'apikey: apisecret' — LiveKit merges this with the (empty) keys
+      # block in livekit.yaml. Both vars must be set in the backend .env.
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+    env_file:
+      - .env
     volumes:
       - ./services/livekit/livekit.yaml:/etc/livekit.yaml:ro
     ports:
-      # Signaling (proxied at https://atlas.labmgm.org/livekit by nginx)
+      # Signaling — VPS nginx proxies wss://atlas.labmgm.org/livekit here.
       - "${LIVEKIT_HOST_PORT:-7880}:7880"
-      # TCP fallback for clients behind UDP-blocking firewalls
-      - "7881:7881"
-      # TURN-over-TLS (proxied at turn.atlas.labmgm.org:443 by nginx)
-      - "5349:5349"
-      # RTC media — must also be opened on the VPS firewall to keikaku
-      - "50000-50100:50000-50100/udp"
+      # UDP Mux: one port carries every room's media. VPS nginx stream {}
+      # forwards UDP+TCP/7882 over Tailscale to here. The TCP listener
+      # is the in-network fallback for UDP-blocked clients.
+      - "7882:7882/udp"
+      - "7882:7882"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7880/ > /dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7880/ > /dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
