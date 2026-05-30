@@ -91,9 +91,16 @@ export class LivekitService {
       canPublish: args.canPublish ?? true,
       canSubscribe: args.canSubscribe ?? true,
       canPublishData: true,
-      // canPublishSources is honored when set; otherwise LiveKit allows
-      // all sources matching the canPublish flag.
-      ...(args.canPublishSources ? { canPublishSources: args.canPublishSources } : {}),
+      // Explicit source allow-list. When the caller doesn't pass one,
+      // default to the full Phase 2 set: mic + camera + screen share
+      // (video + audio). Phase 5 will derive this from the channel's
+      // per-role permissions JSON before minting the token.
+      canPublishSources: args.canPublishSources ?? [
+        'microphone',
+        'camera',
+        'screen_share',
+        'screen_share_audio',
+      ],
     });
     return at.toJwt();
   }

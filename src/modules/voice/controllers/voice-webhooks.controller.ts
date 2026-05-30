@@ -10,6 +10,13 @@ interface LivekitWebhookEvent {
   event: string;
   room?: { name?: string };
   participant?: { identity?: string };
+  /**
+   * LiveKit's TrackInfo on track_published / track_unpublished events.
+   * `source` enumerates UNKNOWN / CAMERA / MICROPHONE / SCREEN_SHARE /
+   * SCREEN_SHARE_AUDIO. We only care about SCREEN_SHARE for Phase 2
+   * (screen-share badge on the sidebar for non-room observers).
+   */
+  track?: { sid?: string; source?: string; type?: string };
 }
 
 /**
@@ -83,8 +90,24 @@ export class VoiceWebhooksController {
         await this.participants.reconcileRoomFinishedFromWebhook({ roomName });
         break;
       }
-      // Other events (track_published, recording_*, etc.) are observed
-      // client-side in Phase 1. Phase 2+ will subscribe to more here.
+      case 'track_published':
+      case 'track_unpublished': {
+        // Only fan out screen-share lifecycle — camera/mic are already
+        // observed inline by every LiveKit client in the room.
+        if (!roomName || !identity) break;
+        const source = (event.track?.source ?? '').toUpperCase();
+        if (source !== 'SCREEN_SHARE' && source !== 'SCREEN_SHARE_AUDIO') break;
+        const channelId = roomName.startsWith('voice:')
+          ? roomName.slice('voice:'.length)
+          : null;
+        if (!channelId) break;
+        this.realtime.screenShareState(channelId, {
+          userId: identity,
+          active: event.event === 'track_published',
+        });
+        break;
+      }
+      // recording_* events handled in Phase 7.
       default:
         break;
     }
