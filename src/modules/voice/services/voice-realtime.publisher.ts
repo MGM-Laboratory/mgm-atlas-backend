@@ -104,4 +104,17 @@ export class VoiceRealtimePublisher {
       speakers,
     });
   }
+
+  /**
+   * Screen-share lifecycle, derived from LiveKit's track_published /
+   * track_unpublished webhooks. Used by the sidebar to badge channels
+   * where someone is sharing — clients in the room see this directly
+   * via their LiveKit Room events and don't need the fanout.
+   */
+  screenShareState(channelId: string, payload: { userId: string; active: boolean }): void {
+    this.emit(this.channelRoom(channelId), 'voice.screenshare.update', {
+      channelId,
+      ...payload,
+    });
+  }
 }
