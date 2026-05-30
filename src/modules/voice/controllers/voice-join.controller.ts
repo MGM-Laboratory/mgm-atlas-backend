@@ -1,6 +1,7 @@
 import {
   Controller,
   ForbiddenException,
+  Get,
   NotFoundException,
   Param,
   Post,
@@ -92,5 +93,49 @@ export class VoiceJoinController {
       this.realtime.participantLeft(channel.id, channel.projectId, { userId: user.id });
     }
     return result;
+  }
+
+  /**
+   * Resolve the paired ChatChannel id for a voice channel's text
+   * thread (§10). Lobby channels (projectId=null) currently have no
+   * paired thread — clients receive 404 and hide the chat side panel.
+   *
+   * Access mirrors join: per-project channels gated by insider;
+   * lobby channels are open to any authenticated user (but currently
+   * always 404 here since lobby threads aren't supported yet).
+   */
+  @Get('thread')
+  async getThread(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('channelId') channelId: string,
+  ) {
+    const channel = await this.prisma.voiceChannel.findUnique({
+      where: { id: channelId },
+      select: {
+        id: true,
+        projectId: true,
+        archivedAt: true,
+        textThreadId: true,
+        project: { select: { slug: true } },
+      },
+    });
+    if (!channel) throw new NotFoundException('Voice channel not found.');
+    if (channel.archivedAt) {
+      throw new ForbiddenException('This voice channel is archived.');
+    }
+    if (channel.projectId) {
+      const { access } = await this.access.resolve(channel.projectId, user);
+      this.access.assertInsider(access);
+    }
+    if (!channel.textThreadId) {
+      // Either a lobby channel (unsupported) or an existing voice
+      // channel that pre-dates the Phase 4 backfill.
+      throw new NotFoundException('No text thread for this voice channel.');
+    }
+    return {
+      chatChannelId: channel.textThreadId,
+      projectId: channel.projectId,
+      projectSlug: channel.project?.slug ?? null,
+    };
   }
 }
