@@ -5,12 +5,14 @@ import { ProjectsModule } from '@/modules/projects/projects.module';
 import { VoiceChannelsController } from './controllers/voice-channels.controller';
 import { VoiceJoinController } from './controllers/voice-join.controller';
 import { VoiceLobbyController } from './controllers/voice-lobby.controller';
+import { VoicePreferencesController } from './controllers/voice-preferences.controller';
 import { VoiceWebhooksController } from './controllers/voice-webhooks.controller';
 import { VoiceGateway } from './gateway/voice.gateway';
 import { VoiceFeatureFlagGuard } from './guards/voice-feature-flag.guard';
 import { LivekitService } from './services/livekit.service';
 import { VoiceChannelsService } from './services/voice-channels.service';
 import { VoiceParticipantsService } from './services/voice-participants.service';
+import { VoicePreferencesService } from './services/voice-preferences.service';
 import { VoiceRealtimePublisher } from './services/voice-realtime.publisher';
 
 /**
@@ -33,6 +35,7 @@ import { VoiceRealtimePublisher } from './services/voice-realtime.publisher';
     VoiceChannelsController,
     VoiceLobbyController,
     VoiceJoinController,
+    VoicePreferencesController,
     VoiceWebhooksController,
   ],
   providers: [
@@ -40,6 +43,7 @@ import { VoiceRealtimePublisher } from './services/voice-realtime.publisher';
     LivekitService,
     VoiceChannelsService,
     VoiceParticipantsService,
+    VoicePreferencesService,
     VoiceRealtimePublisher,
     VoiceGateway,
   ],
@@ -48,6 +52,7 @@ import { VoiceRealtimePublisher } from './services/voice-realtime.publisher';
     LivekitService,
     VoiceChannelsService,
     VoiceParticipantsService,
+    VoicePreferencesService,
     VoiceRealtimePublisher,
   ],
 })
