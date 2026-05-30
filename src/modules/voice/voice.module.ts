@@ -1,12 +1,14 @@
 import { Global, Module } from '@nestjs/common';
 import { AuthModule } from '@/modules/auth/auth.module';
 import { ChatModule } from '@/modules/chat/chat.module';
+import { MediaModule } from '@/modules/media/media.module';
 import { ProjectsModule } from '@/modules/projects/projects.module';
 import { VoiceChannelsController } from './controllers/voice-channels.controller';
 import { VoiceJoinController } from './controllers/voice-join.controller';
 import { VoiceLobbyController } from './controllers/voice-lobby.controller';
 import { VoiceModerationController } from './controllers/voice-moderation.controller';
 import { VoicePreferencesController } from './controllers/voice-preferences.controller';
+import { VoiceSoundboardController } from './controllers/voice-soundboard.controller';
 import { VoiceWebhooksController } from './controllers/voice-webhooks.controller';
 import { VoiceGateway } from './gateway/voice.gateway';
 import { VoiceFeatureFlagGuard } from './guards/voice-feature-flag.guard';
@@ -16,6 +18,7 @@ import { VoiceModerationService } from './services/voice-moderation.service';
 import { VoiceParticipantsService } from './services/voice-participants.service';
 import { VoicePreferencesService } from './services/voice-preferences.service';
 import { VoiceRealtimePublisher } from './services/voice-realtime.publisher';
+import { VoiceSoundboardService } from './services/voice-soundboard.service';
 
 /**
  * Discord-parity voice chat module. Phase 1 ships channel CRUD +
@@ -32,13 +35,14 @@ import { VoiceRealtimePublisher } from './services/voice-realtime.publisher';
  */
 @Global()
 @Module({
-  imports: [AuthModule, ProjectsModule, ChatModule],
+  imports: [AuthModule, ProjectsModule, ChatModule, MediaModule],
   controllers: [
     VoiceChannelsController,
     VoiceLobbyController,
     VoiceJoinController,
     VoiceModerationController,
     VoicePreferencesController,
+    VoiceSoundboardController,
     VoiceWebhooksController,
   ],
   providers: [
@@ -49,6 +53,7 @@ import { VoiceRealtimePublisher } from './services/voice-realtime.publisher';
     VoiceParticipantsService,
     VoicePreferencesService,
     VoiceRealtimePublisher,
+    VoiceSoundboardService,
     VoiceGateway,
   ],
   exports: [
@@ -59,6 +64,7 @@ import { VoiceRealtimePublisher } from './services/voice-realtime.publisher';
     VoiceParticipantsService,
     VoicePreferencesService,
     VoiceRealtimePublisher,
+    VoiceSoundboardService,
   ],
 })
 export class VoiceModule {}
