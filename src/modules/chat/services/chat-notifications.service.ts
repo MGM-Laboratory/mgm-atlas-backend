@@ -53,15 +53,19 @@ export class ChatNotificationsService {
     });
     const channelName = channel?.name ?? 'channel';
 
-    await this.notifications.createMany(
-      recipients.map((u) => ({
-        userId: u.id,
+    // Per-user notify() so each recipient also gets the live socket event
+    // + Web Push. pushTag collapses multiple mentions in the same channel
+    // into one OS-level banner (overwrites the prior one).
+    await this.notifications.notifyMany(
+      recipients.map((u) => u.id),
+      {
         type: 'CHAT_MENTION',
         title: `@${author.name} mentioned you in #${channelName}`,
         body: this.preview(message.markdown),
         link: `/projects/${project.slug}/chat/${channelId}`,
         metadata: { messageId: message.id, channelId, projectId },
-      })),
+        pushTag: `chat:${channelId}`,
+      },
     );
 
     // Webhook to n8n for email composition. Cast through unknown to

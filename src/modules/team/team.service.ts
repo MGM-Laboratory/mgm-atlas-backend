@@ -51,7 +51,7 @@ export class TeamService {
       },
     });
 
-    await this.notifications.create({
+    await this.notifications.notify({
       userId: dto.userId,
       type: 'PROJECT_INVITED',
       title: 'You have been invited to a project',
@@ -149,7 +149,7 @@ export class TeamService {
     }
     await this.prisma.projectMember.delete({ where: { id: memberId } });
 
-    await this.notifications.create({
+    await this.notifications.notify({
       userId: member.userId,
       type: 'PROJECT_REMOVED',
       title: 'Removed from a project',

@@ -156,7 +156,9 @@ export class TaskCommentsService {
     }
     const editWindow = this.config.get<number>('chat.editWindowHours', 24) * 60 * 60 * 1000;
     if (Date.now() - existing.createdAt.getTime() > editWindow) {
-      throw new ForbiddenException(`Comments can only be edited within ${editWindow / 3_600_000} hours.`);
+      throw new ForbiddenException(
+        `Comments can only be edited within ${editWindow / 3_600_000} hours.`,
+      );
     }
     const updated = await this.prisma.taskComment.update({
       where: { id: commentId },
@@ -210,27 +212,25 @@ export class TaskCommentsService {
         where: { id: args.task.projectId },
         select: { slug: true },
       });
-      const link = project
-        ? `/projects/${project.slug}/lists/_/tasks/${args.task.key}`
-        : undefined;
+      const link = project ? `/projects/${project.slug}/lists/_/tasks/${args.task.key}` : undefined;
 
-      // Notify mentioned users (skip self).
+      // Notify mentioned users (skip self). notifyMany fans out to socket
+      // + push; pushTag groups multiple comments on the same task into
+      // one OS banner per recipient.
       const recipients = args.mentionedUserIds.filter((uid) => uid !== args.user.id);
       if (recipients.length > 0) {
-        await this.notifications.createMany(
-          recipients.map((uid) => ({
-            userId: uid,
-            type: NotificationType.TASK_MENTIONED,
-            title: `${args.user.name} mentioned you in ${args.task.key}`,
-            body: args.task.title,
-            link,
-            metadata: {
-              taskId: args.task.id,
-              taskKey: args.task.key,
-              commentId: args.comment.id,
-            },
-          })),
-        );
+        await this.notifications.notifyMany(recipients, {
+          type: NotificationType.TASK_MENTIONED,
+          title: `${args.user.name} mentioned you in ${args.task.key}`,
+          body: args.task.title,
+          link,
+          metadata: {
+            taskId: args.task.id,
+            taskKey: args.task.key,
+            commentId: args.comment.id,
+          },
+          pushTag: `task:${args.task.id}`,
+        });
       }
 
       // If this is a reply, ping the parent's author too (if not self,
@@ -240,12 +240,8 @@ export class TaskCommentsService {
           where: { id: args.comment.replyToId },
           select: { authorId: true },
         });
-        if (
-          parent &&
-          parent.authorId !== args.user.id &&
-          !recipients.includes(parent.authorId)
-        ) {
-          await this.notifications.create({
+        if (parent && parent.authorId !== args.user.id && !recipients.includes(parent.authorId)) {
+          await this.notifications.notify({
             userId: parent.authorId,
             type: NotificationType.TASK_COMMENT_REPLY,
             title: `${args.user.name} replied to your comment on ${args.task.key}`,
@@ -256,6 +252,7 @@ export class TaskCommentsService {
               taskKey: args.task.key,
               commentId: args.comment.id,
             },
+            pushTag: `task:${args.task.id}`,
           });
         }
       }
@@ -274,7 +271,9 @@ export class TaskCommentsService {
     return task;
   }
 
-  private shape(c: TaskComment & { author: { id: string; name: string; avatarUrl: string | null } }): CommentResponse {
+  private shape(
+    c: TaskComment & { author: { id: string; name: string; avatarUrl: string | null } },
+  ): CommentResponse {
     return {
       id: c.id,
       taskId: c.taskId,
