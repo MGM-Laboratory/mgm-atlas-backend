@@ -10,6 +10,7 @@ import { VoiceModerationController } from './controllers/voice-moderation.contro
 import { VoicePreferencesController } from './controllers/voice-preferences.controller';
 import { VoiceRecordingController } from './controllers/voice-recording.controller';
 import { VoiceSoundboardController } from './controllers/voice-soundboard.controller';
+import { VoiceStageController } from './controllers/voice-stage.controller';
 import { VoiceWebhooksController } from './controllers/voice-webhooks.controller';
 import { VoiceGateway } from './gateway/voice.gateway';
 import { VoiceFeatureFlagGuard } from './guards/voice-feature-flag.guard';
@@ -21,6 +22,7 @@ import { VoicePreferencesService } from './services/voice-preferences.service';
 import { VoiceRealtimePublisher } from './services/voice-realtime.publisher';
 import { VoiceRecordingService } from './services/voice-recording.service';
 import { VoiceSoundboardService } from './services/voice-soundboard.service';
+import { VoiceStageService } from './services/voice-stage.service';
 
 /**
  * Discord-parity voice chat module. Phase 1 ships channel CRUD +
@@ -46,6 +48,7 @@ import { VoiceSoundboardService } from './services/voice-soundboard.service';
     VoicePreferencesController,
     VoiceRecordingController,
     VoiceSoundboardController,
+    VoiceStageController,
     VoiceWebhooksController,
   ],
   providers: [
@@ -58,6 +61,7 @@ import { VoiceSoundboardService } from './services/voice-soundboard.service';
     VoiceRealtimePublisher,
     VoiceRecordingService,
     VoiceSoundboardService,
+    VoiceStageService,
     VoiceGateway,
   ],
   exports: [
@@ -70,6 +74,7 @@ import { VoiceSoundboardService } from './services/voice-soundboard.service';
     VoiceRealtimePublisher,
     VoiceRecordingService,
     VoiceSoundboardService,
+    VoiceStageService,
   ],
 })
 export class VoiceModule {}

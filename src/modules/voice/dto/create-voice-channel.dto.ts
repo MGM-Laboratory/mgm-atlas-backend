@@ -9,7 +9,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { VoiceAudioQuality } from '@prisma/client';
+import { VoiceAudioQuality, VoiceChannelKind } from '@prisma/client';
 
 /**
  * DTO for creating a voice channel. Used by both per-project and
@@ -42,4 +42,9 @@ export class CreateVoiceChannelDto {
   @IsOptional()
   @IsEnum(VoiceAudioQuality)
   audioQuality?: VoiceAudioQuality;
+
+  /** Phase 8: STANDARD (default) or STAGE (speaker/audience model). */
+  @IsOptional()
+  @IsEnum(VoiceChannelKind)
+  kind?: VoiceChannelKind;
 }

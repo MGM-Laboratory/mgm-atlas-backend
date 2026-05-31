@@ -54,10 +54,15 @@ export class VoiceJoinController {
     }
 
     // Access check: project channels need insider; lobby channels are
-    // open to any authenticated user.
+    // open to any authenticated user. Capture canModerate so the
+    // participants service can default them to SPEAKER in STAGE
+    // channels (managers/admins always speak; everyone else is
+    // audience until promoted).
+    let canModerate = user.isAdmin;
     if (channel.projectId) {
       const { access } = await this.access.resolve(channel.projectId, user);
       this.access.assertInsider(access);
+      canModerate = access.isManager;
     }
 
     const envelope = await this.participants.join({
@@ -65,6 +70,7 @@ export class VoiceJoinController {
       userId: user.id,
       userName: user.name,
       avatarUrl: user.avatarUrl ?? null,
+      canModerate,
     });
 
     this.realtime.participantJoined(channel.id, channel.projectId, {

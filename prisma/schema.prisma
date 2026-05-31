@@ -100,6 +100,25 @@ enum VoiceRecordingStatus {
   FAILED
 }
 
+enum VoiceChannelKind {
+  /// Open mic. Everyone who joins can speak immediately. Default for
+  /// backward compatibility — pre-Phase 8 channels are all STANDARD.
+  STANDARD
+  /// Stage channel — audience-by-default. Moderators promote raised
+  /// hands to speakers. LiveKit refuses mic publish for AUDIENCE
+  /// participants at the protocol level (canPublishSources=[]).
+  STAGE
+}
+
+enum VoiceParticipantRole {
+  /// Default for STANDARD channels. For STAGE channels, only set when
+  /// a moderator has promoted this participant.
+  SPEAKER
+  /// Only meaningful in STAGE channels. The participant subscribes to
+  /// audio but cannot publish their mic until promoted.
+  AUDIENCE
+}
+
 // ─── Chat enums ──────────────────────────────────────────────────────────
 
 enum ChatMessageKind {
@@ -1008,6 +1027,9 @@ model VoiceChannel {
   /// null = unlimited
   userLimit    Int?
   audioQuality VoiceAudioQuality @default(STANDARD)
+  /// Phase 8 — STANDARD (open mic) or STAGE (speaker/audience model).
+  /// All pre-Phase-8 channels default to STANDARD.
+  kind         VoiceChannelKind  @default(STANDARD)
   /// True for the channel auto-created with a project (or the lobby default).
   isDefault    Boolean           @default(false)
   sortIndex    Int               @default(0)
@@ -1046,12 +1068,20 @@ model VoiceParticipant {
   livekitSid String?
   /// True if a moderator has server-side muted this participant.
   mutedByMod Boolean   @default(false)
+  /// Phase 8 — SPEAKER (default; can publish mic) or AUDIENCE (only in
+  /// STAGE channels; mic publish refused at the LiveKit protocol level
+  /// until a moderator promotes them).
+  role       VoiceParticipantRole @default(SPEAKER)
+  /// Phase 8 — set when an AUDIENCE member raises their hand; null
+  /// otherwise. Hand-raise queue is ordered by this timestamp.
+  handRaisedAt DateTime?
 
   channel VoiceChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
   user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([channelId, leftAt])
   @@index([userId, leftAt])
+  @@index([channelId, handRaisedAt])
 }
 
 model VoiceSoundboardClip {

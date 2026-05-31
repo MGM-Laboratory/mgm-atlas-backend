@@ -210,6 +210,63 @@ export class VoiceRealtimePublisher {
     return `user:${userId}`;
   }
 
+  // ─── Stage channels (Phase 8) ──────────────────────────────────────
+
+  stageHandRaised(
+    channelId: string,
+    _projectId: string | null,
+    payload: { userId: string; handRaisedAt: Date },
+  ): void {
+    this.emit(this.channelRoom(channelId), 'voice.stage.hand.raised', {
+      channelId,
+      userId: payload.userId,
+      handRaisedAt: payload.handRaisedAt.toISOString(),
+    });
+  }
+
+  stageHandLowered(
+    channelId: string,
+    _projectId: string | null,
+    payload: { userId: string; byUserId: string },
+  ): void {
+    this.emit(this.channelRoom(channelId), 'voice.stage.hand.lowered', {
+      channelId,
+      ...payload,
+    });
+  }
+
+  stagePromoted(
+    channelId: string,
+    _projectId: string | null,
+    payload: { targetUserId: string; byUserId: string },
+  ): void {
+    this.emit(this.channelRoom(channelId), 'voice.stage.promoted', {
+      channelId,
+      ...payload,
+    });
+    // Personally-addressed event so the promoted user's tab knows to
+    // re-evaluate publish capability + show a "you're now a speaker"
+    // toast even if they're temporarily disconnected from the channel
+    // socket.
+    this.emit(this.userRoom(payload.targetUserId), 'voice.stage.you.promoted', {
+      channelId,
+    });
+  }
+
+  stageDemoted(
+    channelId: string,
+    _projectId: string | null,
+    payload: { targetUserId: string; byUserId: string },
+  ): void {
+    this.emit(this.channelRoom(channelId), 'voice.stage.demoted', {
+      channelId,
+      ...payload,
+    });
+    this.emit(this.userRoom(payload.targetUserId), 'voice.stage.you.demoted', {
+      channelId,
+    });
+  }
+
   // ─── Recording lifecycle (Phase 7) ──────────────────────────────────
 
   /**
