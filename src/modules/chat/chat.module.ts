@@ -12,6 +12,7 @@ import { ChatMessagesController } from './chat-messages.controller';
 import { ChatOverviewController } from './chat-overview.controller';
 import { ChatSearchController } from './chat-search.controller';
 import { ChatStickersController } from './chat-stickers.controller';
+import { QuickReplyController } from './quick-reply.controller';
 import { ChatGateway } from './gateway/chat.gateway';
 import { WsSessionGuard } from './gateway/ws-session.guard';
 import { ChatAttachmentsService } from './services/chat-attachments.service';
@@ -51,6 +52,7 @@ import { ChatTypingService } from './services/chat-typing.service';
     ChatStickersController,
     AdminStickersController,
     ChatSearchController,
+    QuickReplyController,
   ],
   providers: [
     ChatChannelsService,
