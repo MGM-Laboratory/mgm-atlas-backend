@@ -246,6 +246,26 @@ class EnvVars {
   @IsOptional()
   @IsInt()
   VOICE_RECORDING_RETENTION_DAYS?: number;
+
+  // ─── Web Push (all optional; when keys are empty, push dispatch is a
+  //     no-op and in-app notifications still persist + emit via socket).
+  //     Generate with:  npx web-push generate-vapid-keys
+  //     Subject must be a `mailto:` URL or your site origin per RFC 8292.
+  /// Base64url-encoded P-256 public key. Frontend uses this to subscribe.
+  @IsOptional()
+  @IsString()
+  VAPID_PUBLIC_KEY?: string;
+
+  /// Base64url-encoded P-256 private key. Backend signs JWTs with it.
+  @IsOptional()
+  @IsString()
+  VAPID_PRIVATE_KEY?: string;
+
+  /// Identity URI sent in the VAPID JWT — typically `mailto:ops@your.org`
+  /// or `https://atlas.labmgm.org`.
+  @IsOptional()
+  @IsString()
+  VAPID_SUBJECT?: string;
 }
 
 export function validateEnv(raw: Record<string, unknown>) {
