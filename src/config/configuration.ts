@@ -122,4 +122,12 @@ export default () => ({
     // Phase 7: recording retention. 0 = keep forever.
     recordingRetentionDays: parseInt(process.env.VOICE_RECORDING_RETENTION_DAYS ?? '30', 10),
   },
+  push: {
+    // VAPID keys for Web Push. When any is empty, PushDispatchService
+    // becomes a no-op (in-app notifications still emit via socket).
+    // Generate with: npx web-push generate-vapid-keys
+    vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? '',
+    vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? '',
+    vapidSubject: process.env.VAPID_SUBJECT ?? 'mailto:dev@labmgm.org',
+  },
 });

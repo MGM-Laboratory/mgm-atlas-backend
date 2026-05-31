@@ -159,6 +159,8 @@ model User {
   contributionRequests           ContributionRequest[]
   resolvedRequests               ContributionRequest[]   @relation("ResolvedBy")
   notifications                  Notification[]
+  pushSubscriptions              PushSubscription[]
+  notificationPreference         NotificationPreference?
   invitedReceived                ProjectInvite[]         @relation("InvitedUser")
   invitedSent                    ProjectInvite[]         @relation("InvitedBy")
   bookmarks                      Bookmark[]
@@ -388,6 +390,66 @@ model Notification {
 
   @@index([userId, readAt])
   @@index([userId, createdAt])
+}
+
+/// Web Push subscription registered by a user's browser. One row per
+/// (user, endpoint) — same user can be subscribed from multiple devices.
+/// Dead endpoints are deleted by PushDispatchService when the push
+/// service returns 404/410.
+model PushSubscription {
+  id         String    @id @default(uuid())
+  userId     String
+  /// Push endpoint URL from the browser's PushManager.subscribe()
+  /// response. Globally unique — same endpoint never registers twice.
+  endpoint   String    @unique
+  /// Base64url-encoded P-256 public key from the subscription.
+  p256dh     String
+  /// Base64url-encoded auth secret from the subscription.
+  auth       String
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  /// Updated on every successful push delivery — lets us prune very
+  /// stale subscriptions later without losing recent re-subscribes.
+  lastSeenAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Per-user notification preferences. One row per user (created lazily
+/// on first read with all-true defaults). Each NotificationType has its
+/// own boolean toggle. The `pushEnabled` master switch gates every push
+/// regardless of per-type toggles — disabling it kills push without
+/// dropping the per-type configuration.
+model NotificationPreference {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  /// Master switch for Web Push delivery. In-app notifications still
+  /// persist when this is false — the user just doesn't get a system
+  /// notification.
+  pushEnabled                    Boolean  @default(true)
+  /// Contribution request lifecycle (all three share this toggle).
+  contributionRequestEnabled     Boolean  @default(true)
+  projectInvitedEnabled          Boolean  @default(true)
+  projectRoleChangedEnabled      Boolean  @default(true)
+  projectRemovedEnabled          Boolean  @default(true)
+  chatMentionEnabled             Boolean  @default(true)
+  taskAssignedEnabled            Boolean  @default(true)
+  taskMentionedEnabled           Boolean  @default(true)
+  taskDueSoonEnabled             Boolean  @default(true)
+  taskOverdueEnabled             Boolean  @default(true)
+  taskCommentReplyEnabled        Boolean  @default(true)
+  taskStatusChangedEnabled       Boolean  @default(true)
+  taskDependencyBlockedEnabled   Boolean  @default(true)
+  noteMentionedEnabled           Boolean  @default(true)
+  whiteboardMentionedEnabled     Boolean  @default(true)
+  voiceParticipantJoinedEnabled  Boolean  @default(true)
+  voiceMentionedEnabled          Boolean  @default(true)
+  updatedAt                      DateTime @updatedAt
+  createdAt                      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ─── Featured (admin-curated dashboard hero) ─────────────────────────────

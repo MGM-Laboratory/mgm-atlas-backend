@@ -62,7 +62,8 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "slugify": "^1.6.6",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "web-push": "3.6.7"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.5",
@@ -75,6 +76,7 @@
     "@types/nodemailer": "^6.4.16",
     "@types/passport-jwt": "^4.0.1",
     "@types/supertest": "^6.0.2",
+    "@types/web-push": "3.6.4",
     "@typescript-eslint/eslint-plugin": "^8.8.1",
     "@typescript-eslint/parser": "^8.8.1",
     "eslint": "^8.57.1",
