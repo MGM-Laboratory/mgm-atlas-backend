@@ -81,15 +81,17 @@ export class DueDateScanService implements OnModuleInit, OnModuleDestroy {
           });
           if (existing) continue;
 
-          await this.notifications.create({
+          // pushTag scoped to the task so a re-fired due-soon followed
+          // by an overdue notification replace each other instead of
+          // stacking up in the user's tray.
+          await this.notifications.notify({
             userId,
             type,
             title: overdue ? `Overdue: ${task.key}` : `Due soon: ${task.key}`,
-            body: overdue
-              ? `“${task.title}” was due ${due}.`
-              : `“${task.title}” is due ${due}.`,
+            body: overdue ? `“${task.title}” was due ${due}.` : `“${task.title}” is due ${due}.`,
             link: `/projects/${task.project.slug}/lists/${task.taskListId}/tasks/${task.key}`,
             metadata: { taskId: task.id, kind: 'pmo-due' },
+            pushTag: `task-due:${task.id}`,
           });
           created += 1;
         }

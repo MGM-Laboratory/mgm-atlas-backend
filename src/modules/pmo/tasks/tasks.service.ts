@@ -22,6 +22,7 @@ import { CreateTaskDto } from './dto/create-task.dto';
 import { ListTasksQueryDto } from './dto/list-tasks.dto';
 import { MoveTaskDto } from './dto/move-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import { NotificationsService } from '@/modules/notifications/notifications.service';
 import { TaskActivityService } from './task-activity.service';
 
 export type TaskWithRelations = Task & {
@@ -37,7 +38,43 @@ export class TasksService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly activity: TaskActivityService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  /**
+   * Notify every newly-added assignee about being put on a task. Excludes
+   * the actor (no point notifying yourself for self-assignment). Called
+   * AFTER the transaction commits so we don't fire on rollback.
+   */
+  private async notifyNewAssignees(args: {
+    actor: AuthenticatedUser;
+    taskId: string;
+    assigneeIds: string[];
+  }): Promise<void> {
+    const recipients = args.assigneeIds.filter((uid) => uid !== args.actor.id);
+    if (recipients.length === 0) return;
+
+    const task = await this.prisma.task.findUnique({
+      where: { id: args.taskId },
+      select: {
+        id: true,
+        key: true,
+        title: true,
+        taskListId: true,
+        project: { select: { slug: true } },
+      },
+    });
+    if (!task) return;
+
+    await this.notifications.notifyMany(recipients, {
+      type: 'TASK_ASSIGNED',
+      title: `${args.actor.name} assigned you ${task.key}`,
+      body: task.title,
+      link: `/projects/${task.project.slug}/lists/${task.taskListId}/tasks/${task.key}`,
+      metadata: { taskId: task.id, taskKey: task.key, actorId: args.actor.id },
+      pushTag: `task:${task.id}`,
+    });
+  }
 
   // ─── Reads ──────────────────────────────────────────────────────────
 
@@ -59,11 +96,7 @@ export class TasksService {
 
     return this.prisma.task.findMany({
       where,
-      orderBy: [
-        { statusId: 'asc' },
-        { positionInStatus: 'asc' },
-        { createdAt: 'asc' },
-      ],
+      orderBy: [{ statusId: 'asc' }, { positionInStatus: 'asc' }, { createdAt: 'asc' }],
       include: this.relationInclude(),
     });
   }
@@ -148,18 +181,14 @@ export class TasksService {
   ): Promise<TaskWithRelations> {
     const list = await this.assertListExists(projectId, listId);
     if (access === 'contributor' && !list.contributorsCanCreateTasks) {
-      throw new ForbiddenException(
-        'This list does not allow contributor task creation.',
-      );
+      throw new ForbiddenException('This list does not allow contributor task creation.');
     }
     const max = this.config.get<number>('pmo.maxTasksPerList', 2000);
     const existing = await this.prisma.task.count({
       where: { taskListId: listId, deletedAt: null },
     });
     if (existing >= max) {
-      throw new ConflictException(
-        `Task list already has ${existing} tasks. Maximum is ${max}.`,
-      );
+      throw new ConflictException(`Task list already has ${existing} tasks. Maximum is ${max}.`);
     }
 
     const status = dto.statusId
@@ -178,12 +207,9 @@ export class TasksService {
       orderBy: { positionInStatus: 'desc' },
       select: { positionInStatus: true },
     });
-    const nextPosition = (lastPos?.positionInStatus
-      ? Number(lastPos.positionInStatus)
-      : 0) + 1;
+    const nextPosition = (lastPos?.positionInStatus ? Number(lastPos.positionInStatus) : 0) + 1;
 
-    const projectKey =
-      list.projectKey && list.projectKey.length > 0 ? list.projectKey : 'TASK';
+    const projectKey = list.projectKey && list.projectKey.length > 0 ? list.projectKey : 'TASK';
 
     const result = await this.prisma.$transaction(async (tx) => {
       // Bump counter + read the new value atomically.
@@ -242,6 +268,16 @@ export class TasksService {
       }
       return task;
     });
+
+    // After the tx commits — fire-and-forget so a notify failure can't
+    // poison the create response (the user already saw it succeed).
+    if (dto.assigneeUserIds && dto.assigneeUserIds.length > 0) {
+      void this.notifyNewAssignees({
+        actor: user,
+        taskId: result.id,
+        assigneeIds: dto.assigneeUserIds,
+      }).catch(() => {});
+    }
 
     return this.get(projectId, result.id);
   }
@@ -332,15 +368,13 @@ export class TasksService {
       if ((next?.getTime() ?? null) !== (prev?.getTime() ?? null)) {
         data.dueDate = next;
         events.push({
-          kind:
-            next === null
-              ? TaskActivityKind.DUE_DATE_CLEARED
-              : TaskActivityKind.DUE_DATE_SET,
+          kind: next === null ? TaskActivityKind.DUE_DATE_CLEARED : TaskActivityKind.DUE_DATE_SET,
           payload: { before: prev, after: next },
         });
       }
     }
 
+    let addedAssignees: string[] = [];
     await this.prisma.$transaction(async (tx) => {
       if (Object.keys(data).length > 0) {
         await tx.task.update({ where: { id: taskId }, data });
@@ -350,6 +384,7 @@ export class TasksService {
         const current = existing.assignees.map((a) => a.userId);
         const next = dto.assigneeUserIds;
         const added = next.filter((u) => !current.includes(u));
+        addedAssignees = added;
         const removed = current.filter((u) => !next.includes(u));
         if (removed.length > 0) {
           await tx.taskAssignee.deleteMany({
@@ -392,6 +427,14 @@ export class TasksService {
         });
       }
     });
+
+    if (addedAssignees.length > 0) {
+      void this.notifyNewAssignees({
+        actor: user,
+        taskId,
+        assigneeIds: addedAssignees,
+      }).catch(() => {});
+    }
 
     return this.get(projectId, taskId);
   }
@@ -504,7 +547,9 @@ export class TasksService {
   private assertDeleteAccess(task: Task, user: AuthenticatedUser, access: AccessKind) {
     if (access === 'admin' || access === 'manager') return;
     if (task.createdById === user.id) return;
-    throw new ForbiddenException('Only the task creator or a project manager can delete this task.');
+    throw new ForbiddenException(
+      'Only the task creator or a project manager can delete this task.',
+    );
   }
 
   private async assertListExists(projectId: string, listId: string) {
@@ -620,36 +665,48 @@ export class TasksService {
       status: { category: { in: openCategories } },
     };
 
-    const [statuses, byStatusGroups, dueToday, dueThisWeek, overdue, totalOpen, assigneeGroups, activity] =
-      await Promise.all([
-        this.prisma.taskStatus.findMany({
-          where: { taskListId: listId },
-          orderBy: { order: 'asc' },
-          select: { id: true, name: true, color: true, category: true },
-        }),
-        this.prisma.task.groupBy({
-          by: ['statusId'],
-          where: { taskListId: listId, projectId, deletedAt: null, archivedAt: null },
-          orderBy: { statusId: 'asc' },
-          _count: { _all: true },
-        }),
-        this.prisma.task.count({ where: { ...openWhere, dueDate: { gte: startToday, lt: endToday } } }),
-        this.prisma.task.count({ where: { ...openWhere, dueDate: { gte: startToday, lt: endWeek } } }),
-        this.prisma.task.count({ where: { ...openWhere, dueDate: { lt: now } } }),
-        this.prisma.task.count({ where: openWhere }),
-        this.prisma.taskAssignee.groupBy({
-          by: ['userId'],
-          where: { task: openWhere },
-          orderBy: { userId: 'asc' },
-          _count: { taskId: true },
-        }),
-        this.prisma.taskActivity.findMany({
-          where: { task: { taskListId: listId, projectId } },
-          orderBy: { createdAt: 'desc' },
-          take: 15,
-          include: { actor: { select: { id: true, name: true, avatarUrl: true } } },
-        }),
-      ]);
+    const [
+      statuses,
+      byStatusGroups,
+      dueToday,
+      dueThisWeek,
+      overdue,
+      totalOpen,
+      assigneeGroups,
+      activity,
+    ] = await Promise.all([
+      this.prisma.taskStatus.findMany({
+        where: { taskListId: listId },
+        orderBy: { order: 'asc' },
+        select: { id: true, name: true, color: true, category: true },
+      }),
+      this.prisma.task.groupBy({
+        by: ['statusId'],
+        where: { taskListId: listId, projectId, deletedAt: null, archivedAt: null },
+        orderBy: { statusId: 'asc' },
+        _count: { _all: true },
+      }),
+      this.prisma.task.count({
+        where: { ...openWhere, dueDate: { gte: startToday, lt: endToday } },
+      }),
+      this.prisma.task.count({
+        where: { ...openWhere, dueDate: { gte: startToday, lt: endWeek } },
+      }),
+      this.prisma.task.count({ where: { ...openWhere, dueDate: { lt: now } } }),
+      this.prisma.task.count({ where: openWhere }),
+      this.prisma.taskAssignee.groupBy({
+        by: ['userId'],
+        where: { task: openWhere },
+        orderBy: { userId: 'asc' },
+        _count: { taskId: true },
+      }),
+      this.prisma.taskActivity.findMany({
+        where: { task: { taskListId: listId, projectId } },
+        orderBy: { createdAt: 'desc' },
+        take: 15,
+        include: { actor: { select: { id: true, name: true, avatarUrl: true } } },
+      }),
+    ]);
 
     const countByStatus = new Map(byStatusGroups.map((g) => [g.statusId, g._count._all]));
     const userIds = assigneeGroups.map((g) => g.userId);

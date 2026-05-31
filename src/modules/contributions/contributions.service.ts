@@ -54,17 +54,17 @@ export class ContributionsService {
       include: { user: true, project: { select: { id: true, slug: true, title: true } } },
     });
 
-    // Notify all PMs in-app.
+    // Notify all PMs in-app + socket + push (per-user; notifyMany fans out).
     const pms = project.members.filter((m) => m.role === 'PROJECT_MANAGER');
-    await this.notifications.createMany(
-      pms.map((m) => ({
-        userId: m.userId,
+    await this.notifications.notifyMany(
+      pms.map((m) => m.userId),
+      {
         type: 'CONTRIBUTION_REQUEST_SUBMITTED',
         title: 'New contribution request',
         body: `${applicant.name} wants to join "${project.title}" as ${dto.role}.`,
         link: `/projects/${project.slug}/manage/requests`,
         metadata: { requestId: request.id, projectId: project.id, applicantId: applicant.id },
-      })),
+      },
     );
 
     // Hand off to n8n for email orchestration (admins + PMs + applicant confirmation).
@@ -163,7 +163,8 @@ export class ContributionsService {
       const isPm = await this.prisma.projectMember.findFirst({
         where: { projectId: request.projectId, userId: actor.id, role: 'PROJECT_MANAGER' },
       });
-      if (!isPm) throw new ForbiddenException('Only Project Managers or Admins may resolve requests.');
+      if (!isPm)
+        throw new ForbiddenException('Only Project Managers or Admins may resolve requests.');
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -192,12 +193,10 @@ export class ContributionsService {
       return u;
     });
 
-    await this.notifications.create({
+    await this.notifications.notify({
       userId: request.userId,
       type:
-        outcome === 'APPROVED'
-          ? 'CONTRIBUTION_REQUEST_APPROVED'
-          : 'CONTRIBUTION_REQUEST_REJECTED',
+        outcome === 'APPROVED' ? 'CONTRIBUTION_REQUEST_APPROVED' : 'CONTRIBUTION_REQUEST_REJECTED',
       title: outcome === 'APPROVED' ? 'Welcome aboard' : 'Contribution request declined',
       body:
         outcome === 'APPROVED'
