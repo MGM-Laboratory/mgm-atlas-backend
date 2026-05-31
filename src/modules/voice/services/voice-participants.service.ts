@@ -71,6 +71,9 @@ export class VoiceParticipantsService {
     userId: string;
     userName: string;
     avatarUrl: string | null;
+    /** Phase 8: when true (manager/admin), the user auto-speaks even
+     *  in STAGE channels. */
+    canModerate?: boolean;
     canPublish?: boolean;
     canSubscribe?: boolean;
   }) {
@@ -85,6 +88,7 @@ export class VoiceParticipantsService {
         archivedAt: true,
         userLimit: true,
         audioQuality: true,
+        kind: true,
         name: true,
       },
     });
@@ -111,10 +115,16 @@ export class VoiceParticipantsService {
       data: { leftAt: new Date() },
     });
 
+    // Phase 8: Stage channels default new joiners to AUDIENCE unless
+    // they're a moderator. STANDARD channels always join as SPEAKER.
+    const role: 'SPEAKER' | 'AUDIENCE' =
+      channel.kind === 'STAGE' && !args.canModerate ? 'AUDIENCE' : 'SPEAKER';
+
     const participant = await this.prisma.voiceParticipant.create({
       data: {
         channelId: channel.id,
         userId: args.userId,
+        role,
       },
       select: {
         id: true,
@@ -122,17 +132,27 @@ export class VoiceParticipantsService {
         userId: true,
         joinedAt: true,
         mutedByMod: true,
+        role: true,
+        handRaisedAt: true,
       },
     });
 
     const roomName = LivekitService.roomNameForChannel(channel.id);
+    const isAudience = role === 'AUDIENCE';
     const token = await this.livekit.mintAccessToken({
       roomName,
       identity: args.userId,
       name: args.userName,
-      metadata: { avatarUrl: args.avatarUrl ?? null, channelId: channel.id },
-      canPublish: args.canPublish ?? true,
+      metadata: { avatarUrl: args.avatarUrl ?? null, channelId: channel.id, role },
+      // AUDIENCE in STAGE channels: can subscribe to everyone (to hear
+      // the speakers) but cannot publish anything until a mod promotes
+      // them. Passing an empty sources list rejects publish at the
+      // LiveKit protocol level.
+      canPublish: isAudience ? false : (args.canPublish ?? true),
       canSubscribe: args.canSubscribe ?? true,
+      canPublishSources: isAudience
+        ? []
+        : undefined /* default: mic + camera + screen */,
     });
     if (!token) {
       // Roll back the participant row so we don't leave a phantom occupant.
@@ -148,7 +168,12 @@ export class VoiceParticipantsService {
       token,
       roomName,
       participant,
-      channel: { id: channel.id, name: channel.name, audioQuality: channel.audioQuality },
+      channel: {
+        id: channel.id,
+        name: channel.name,
+        audioQuality: channel.audioQuality,
+        kind: channel.kind,
+      },
     };
   }
 
