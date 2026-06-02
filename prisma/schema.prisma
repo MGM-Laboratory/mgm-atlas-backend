@@ -757,6 +757,7 @@ enum TaskActivityKind {
   COMPLETED
   REOPENED
   MENTIONED
+  MOVED
 }
 
 enum TaskListTabKind {

@@ -17,12 +17,20 @@ import http from 'node:http';
 import { createHmac } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import * as Y from 'yjs';
-import { setupWSConnection, setPersistence } from 'y-websocket/bin/utils';
+import { setupWSConnection, setPersistence, getYDoc } from 'y-websocket/bin/utils';
 
 const PORT = Number(process.env.PORT ?? 1234);
 const BACKEND = (process.env.ATLAS_BACKEND_BASE_URL ?? '').replace(/\/+$/, '');
 const SECRET = process.env.YJS_INTERNAL_AUTH_SECRET ?? '';
-const SNAPSHOT_DEBOUNCE_MS = Number(process.env.YJS_SNAPSHOT_DEBOUNCE_MS ?? 30000);
+// Default lowered from 30s to 5s as part of the PMO save-safety fix.
+// The original 30s window was big enough that a user could lose
+// 20+ seconds of work by closing the tab in a multi-user room (where
+// writeState only fires when the LAST client disconnects).
+const SNAPSHOT_DEBOUNCE_MS = Number(process.env.YJS_SNAPSHOT_DEBOUNCE_MS ?? 5000);
+// On any client disconnect, schedule a near-immediate flush so a 2+
+// user room still persists when one of them leaves. Independent from
+// the regular SNAPSHOT_DEBOUNCE_MS so it can be tuned aggressively.
+const DISCONNECT_FLUSH_MS = Number(process.env.YJS_DISCONNECT_FLUSH_MS ?? 250);
 
 const configured = Boolean(BACKEND && SECRET);
 if (!configured) {
@@ -98,15 +106,20 @@ async function saveState(docKey, ydoc) {
 
 // One pending snapshot timer per open doc.
 const timers = new Map();
-function scheduleSnapshot(docKey, ydoc) {
-  clearTimeout(timers.get(docKey));
-  timers.set(
-    docKey,
-    setTimeout(() => {
-      timers.delete(docKey);
-      void saveState(docKey, ydoc);
-    }, SNAPSHOT_DEBOUNCE_MS),
-  );
+function scheduleSnapshot(docKey, ydoc, delayMs = SNAPSHOT_DEBOUNCE_MS) {
+  // If a quicker flush is already pending (e.g. someone just
+  // disconnected) we keep that one — never *delay* a flush we already
+  // promised. We do replace the timer if the new delay is shorter.
+  const pending = timers.get(docKey);
+  if (pending) {
+    if (pending.delayMs <= delayMs) return;
+    clearTimeout(pending.handle);
+  }
+  const handle = setTimeout(() => {
+    timers.delete(docKey);
+    void saveState(docKey, ydoc);
+  }, delayMs);
+  timers.set(docKey, { handle, delayMs });
 }
 
 setPersistence({
@@ -118,7 +131,8 @@ setPersistence({
     ydoc.on('update', () => scheduleSnapshot(docName, ydoc));
   },
   writeState: async (docName, ydoc) => {
-    clearTimeout(timers.get(docName));
+    const pending = timers.get(docName);
+    if (pending) clearTimeout(pending.handle);
     timers.delete(docName);
     await saveState(docName, ydoc);
   },
@@ -164,6 +178,16 @@ server.on('upgrade', (request, socket, head) => {
 
 wss.on('connection', (ws, request, docName) => {
   setupWSConnection(ws, request, { docName, gc: true });
+  // Critical for the save-safety fix: when ANY client of a doc
+  // disconnects (not only the last one — `writeState` already handles
+  // that), schedule a near-immediate flush. Without this, User A
+  // closing their tab in a 2-user room would leave their last few
+  // seconds of edits unpersisted until either the regular debounce
+  // fired or User B also left.
+  ws.on('close', () => {
+    const ydoc = getYDoc(docName, true);
+    scheduleSnapshot(docName, ydoc, DISCONNECT_FLUSH_MS);
+  });
 });
 
 server.listen(PORT, () => {
