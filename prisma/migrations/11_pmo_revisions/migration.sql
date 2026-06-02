@@ -10,8 +10,9 @@
 -- user keeps their historical revisions, just anonymized). isCheckpoint marks
 -- per-hour milestone rows the pruner never deletes.
 --
--- Rollback path: previous backend image never writes these tables; they
--- sit empty until traffic hits the new code.
+-- Hotfix on top of f4b26a5: the original migration.sql captured Prisma's
+-- CLI 'update available' banner via the redirect — this version is generated
+-- with stderr suppressed so it contains only valid SQL.
 
 -- CreateTable
 CREATE TABLE "NoteRevision" (
@@ -85,13 +86,3 @@ ALTER TABLE "WhiteboardRevision" ADD CONSTRAINT "WhiteboardRevision_authorId_fke
 -- AddForeignKey
 ALTER TABLE "YDocSnapshotRevision" ADD CONSTRAINT "YDocSnapshotRevision_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
-┌─────────────────────────────────────────────────────────┐
-│  Update available 5.22.0 -> 7.8.0                       │
-│                                                         │
-│  This is a major update - please follow the guide at    │
-│  https://pris.ly/d/major-version-upgrade                │
-│                                                         │
-│  Run the following to update                            │
-│    npm i --save-dev prisma@latest                       │
-│    npm i @prisma/client@latest                          │
-└─────────────────────────────────────────────────────────┘
