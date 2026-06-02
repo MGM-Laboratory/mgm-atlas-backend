@@ -2,8 +2,10 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -23,6 +25,7 @@ import { ListTasksQueryDto } from './dto/list-tasks.dto';
 import { MoveTaskDto } from './dto/move-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
+import { UndoService } from '../undo/undo.service';
 import { TaskActivityService } from './task-activity.service';
 
 export type TaskWithRelations = Task & {
@@ -39,6 +42,8 @@ export class TasksService {
     private readonly config: ConfigService,
     private readonly activity: TaskActivityService,
     private readonly notifications: NotificationsService,
+    @Inject(forwardRef(() => UndoService))
+    private readonly undo: UndoService,
   ) {}
 
   /**
@@ -375,6 +380,40 @@ export class TasksService {
     }
 
     let addedAssignees: string[] = [];
+
+    // Build the inverse-op payload for undo (the "before" state of each
+    // changed field). Mirrors the shape TaskUpdatedOp expects.
+    const inverseFields: Record<string, unknown> = {};
+    const forwardFields: Record<string, unknown> = {};
+    if (data.title !== undefined && dto.title !== undefined) {
+      inverseFields.title = existing.title;
+      forwardFields.title = dto.title;
+    }
+    if (data.description !== undefined && dto.description !== undefined) {
+      inverseFields.description = existing.description;
+      forwardFields.description = dto.description;
+    }
+    if (data.status !== undefined && dto.statusId !== undefined) {
+      inverseFields.statusId = existing.statusId;
+      forwardFields.statusId = dto.statusId;
+    }
+    if (data.priority !== undefined && dto.priority !== undefined) {
+      inverseFields.priority = existing.priority;
+      forwardFields.priority = dto.priority;
+    }
+    if (data.storyPoints !== undefined && dto.storyPoints !== undefined) {
+      inverseFields.storyPoints = existing.storyPoints;
+      forwardFields.storyPoints = dto.storyPoints;
+    }
+    if (data.startDate !== undefined && dto.startDate !== undefined) {
+      inverseFields.startDate = existing.startDate?.toISOString() ?? null;
+      forwardFields.startDate = dto.startDate;
+    }
+    if (data.dueDate !== undefined && dto.dueDate !== undefined) {
+      inverseFields.dueDate = existing.dueDate?.toISOString() ?? null;
+      forwardFields.dueDate = dto.dueDate;
+    }
+
     await this.prisma.$transaction(async (tx) => {
       if (Object.keys(data).length > 0) {
         await tx.task.update({ where: { id: taskId }, data });
@@ -415,6 +454,10 @@ export class TasksService {
             tx,
           });
         }
+        if (added.length > 0 || removed.length > 0) {
+          inverseFields.assigneeUserIds = current;
+          forwardFields.assigneeUserIds = next;
+        }
       }
 
       for (const ev of events) {
@@ -424,6 +467,21 @@ export class TasksService {
           kind: ev.kind,
           payload: ev.payload,
           tx,
+        });
+      }
+
+      // Single combined undo entry per update — Cmd+Z reverses every
+      // field that changed in the same call. Skipped when nothing
+      // changed (e.g. all field values matched what was already there).
+      if (Object.keys(forwardFields).length > 0) {
+        await this.undo.record({
+          tx,
+          actor: user,
+          scope: `task:${taskId}`,
+          kind: 'TASK_UPDATED',
+          taskId,
+          forwardOp: { taskId, fields: forwardFields },
+          inverseOp: { taskId, fields: inverseFields },
         });
       }
     });
@@ -437,6 +495,18 @@ export class TasksService {
     }
 
     return this.get(projectId, taskId);
+  }
+
+  /** Lightweight by-id lookup used by the undo controller — it has a
+   *  taskId from an UndoEntry but needs to discover the projectId to
+   *  re-run normal access checks. Returns null when soft-deleted so
+   *  the undo dispatcher can surface a clean "task no longer exists"
+   *  error to the user. */
+  async findById(taskId: string): Promise<{ id: string; projectId: string } | null> {
+    return this.prisma.task.findFirst({
+      where: { id: taskId, deletedAt: null, project: { deletedAt: null } },
+      select: { id: true, projectId: true },
+    });
   }
 
   async move(
@@ -458,46 +528,62 @@ export class TasksService {
     const beforeStatusId = existing.statusId;
     const beforePosition = existing.positionInStatus.toString();
     const afterPosition = String(dto.positionInStatus);
-
-    await this.prisma.task.update({
-      where: { id: taskId },
-      data: {
-        statusId: dto.statusId,
-        positionInStatus: new Prisma.Decimal(dto.positionInStatus),
-      },
-    });
-
     const statusChanged = dto.statusId !== beforeStatusId;
     const positionChanged = beforePosition !== afterPosition;
 
-    // Every move now leaves an audit entry — PR3 (durable undo) reads
-    // these to build the inverse op. Existing readers of the feed see
-    // STATUS_CHANGED for column moves exactly as before; pure reorders
-    // get the new MOVED kind which they can choose to render or hide.
-    if (statusChanged) {
-      await this.activity.record({
-        taskId,
-        actorId: user.id,
-        kind: TaskActivityKind.STATUS_CHANGED,
-        payload: {
-          before: beforeStatusId,
-          after: dto.statusId,
-          beforePosition,
-          afterPosition,
-        },
-      });
-    } else if (positionChanged) {
-      await this.activity.record({
-        taskId,
-        actorId: user.id,
-        kind: TaskActivityKind.MOVED,
-        payload: {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.task.update({
+        where: { id: taskId },
+        data: {
           statusId: dto.statusId,
-          beforePosition,
-          afterPosition,
+          positionInStatus: new Prisma.Decimal(dto.positionInStatus),
         },
       });
-    }
+
+      // Every move leaves an audit entry — PR3 (durable undo) reads
+      // these to build the inverse op. Existing readers of the feed
+      // see STATUS_CHANGED for column moves exactly as before; pure
+      // reorders get the new MOVED kind which they can choose to
+      // render or hide.
+      if (statusChanged) {
+        await this.activity.record({
+          taskId,
+          actorId: user.id,
+          kind: TaskActivityKind.STATUS_CHANGED,
+          payload: {
+            before: beforeStatusId,
+            after: dto.statusId,
+            beforePosition,
+            afterPosition,
+          },
+          tx,
+        });
+      } else if (positionChanged) {
+        await this.activity.record({
+          taskId,
+          actorId: user.id,
+          kind: TaskActivityKind.MOVED,
+          payload: { statusId: dto.statusId, beforePosition, afterPosition },
+          tx,
+        });
+      }
+
+      // Server-backed undo entry. Skipped when nothing actually moved
+      // so a Cmd+Z immediately after a no-op drag doesn't reverse an
+      // unrelated earlier mutation.
+      if (statusChanged || positionChanged) {
+        await this.undo.record({
+          tx,
+          actor: user,
+          scope: `kanban:${existing.taskListId}`,
+          kind: 'TASK_MOVED',
+          taskId,
+          forwardOp: { taskId, statusId: dto.statusId, positionInStatus: afterPosition },
+          inverseOp: { taskId, statusId: beforeStatusId, positionInStatus: beforePosition },
+        });
+      }
+    });
+
     return this.get(projectId, taskId);
   }
 

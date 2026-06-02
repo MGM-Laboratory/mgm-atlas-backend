@@ -186,6 +186,7 @@ model User {
   noteRevisionsAuthored          NoteRevision[]          @relation("NoteRevisionAuthor")
   whiteboardRevisionsAuthored    WhiteboardRevision[]    @relation("WhiteboardRevisionAuthor")
   yDocSnapshotRevisionsAuthored  YDocSnapshotRevision[]  @relation("YDocSnapshotRevisionAuthor")
+  undoEntries                    UndoEntry[]             @relation("UndoEntryActor")
   // Voice back-relations (no DB impact; Prisma-only).
   voiceChannelsCreated           VoiceChannel[]          @relation("VoiceChannelCreator")
   voiceParticipations            VoiceParticipant[]
@@ -1115,6 +1116,39 @@ model YDocSnapshot {
   createdAt DateTime @default(now())
 
   @@index([docKey])
+}
+
+/// Server-backed durable undo log. One row per reversible PMO mutation
+/// (kanban move, task field edit, etc.). The Cmd+Z handler on the
+/// frontend POSTs /pmo/undo which peeks the actor's most recent row
+/// where `undoneAt IS NULL`, dispatches the inverse op back through
+/// the normal service methods, then stamps `undoneAt`. Redo flips
+/// the polarity (`undoneAt NOT NULL AND redoneAt NULL` → apply
+/// forwardOp). 409 returned when the inverse can't apply (target
+/// deleted, status removed, etc.) — the FE surfaces this as a toast.
+///
+/// `kind` is a free-form string (not an enum) so new reversible
+/// operations can be added without a migration. `taskId` is a
+/// non-FK column for cheap "what was undone on this task" queries;
+/// we deliberately avoid a hard FK so an undone task delete still
+/// has its history.
+model UndoEntry {
+  id         String    @id @default(uuid())
+  actorId    String
+  scope      String
+  kind       String
+  taskId     String?
+  forwardOp  Json
+  inverseOp  Json
+  appliedAt  DateTime  @default(now())
+  undoneAt   DateTime?
+  redoneAt   DateTime?
+
+  actor User @relation("UndoEntryActor", fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([actorId, appliedAt])
+  @@index([actorId, undoneAt])
+  @@index([taskId])
 }
 
 /// History rows for the binary Yjs CRDT state. The sidecar writes a

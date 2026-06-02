@@ -9,6 +9,7 @@ import { TaskCommentsModule } from './task-comments/task-comments.module';
 import { TaskListsModule } from './task-lists/task-lists.module';
 import { TasksModule } from './tasks/tasks.module';
 import { TeamModule } from './team/team.module';
+import { UndoModule } from './undo/undo.module';
 import { WhiteboardsModule } from './whiteboards/whiteboards.module';
 import { YjsModule } from './yjs/yjs.module';
 
@@ -29,6 +30,7 @@ import { YjsModule } from './yjs/yjs.module';
     WhiteboardsModule,
     YjsModule,
     RevisionsModule,
+    UndoModule,
     SchedulingModule,
   ],
   providers: [PmoFeatureFlagGuard],

@@ -80,4 +80,11 @@ export class ProjectAccessService {
   assertInsider(access: ProjectAccess) {
     if (!access.isInsider) throw new ForbiddenException('Project membership required.');
   }
+
+  /// After assertInsider() the access level is guaranteed to be one
+  /// of these three. Helper for services that need to narrow on it
+  /// (e.g. tasks.service.ts already takes this exact type).
+  asInsiderKind(access: ProjectAccess): 'admin' | 'manager' | 'contributor' {
+    return access.level as 'admin' | 'manager' | 'contributor';
+  }
 }
