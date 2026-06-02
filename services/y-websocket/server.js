@@ -81,6 +81,11 @@ async function loadState(docKey) {
   }
 }
 
+// Tracks the most-recently-active user per room, set from awareness
+// 'change' events below. Carried in the snapshot POST so the backend
+// can attribute the YDocSnapshotRevision row to a real user.
+const lastAuthorByDoc = new Map();
+
 async function saveState(docKey, ydoc) {
   if (!configured) return;
   const update = Y.encodeStateAsUpdate(ydoc);
@@ -97,6 +102,7 @@ async function saveState(docKey, ydoc) {
         docKey,
         state: Buffer.from(update).toString('base64'),
         size: update.length,
+        authorId: lastAuthorByDoc.get(docKey) ?? undefined,
       }),
     });
   } catch (err) {
@@ -129,12 +135,35 @@ setPersistence({
     if (state && state.length) Y.applyUpdate(ydoc, state);
     // Attach AFTER the initial load so seeding doesn't trigger a redundant save.
     ydoc.on('update', () => scheduleSnapshot(docName, ydoc));
+
+    // Awareness attribution: every connected client publishes its
+    // `user: { id, name, color }` field; the FE sets `id` to the
+    // session user's id. On every awareness change, remember whose
+    // edit most likely triggered the impending snapshot. y-protocols
+    // emits {added, updated, removed} arrays of clientIds.
+    if (ydoc.awareness) {
+      ydoc.awareness.on('change', ({ added, updated }) => {
+        const changed = [...added, ...updated];
+        if (changed.length === 0) return;
+        const states = ydoc.awareness.getStates();
+        for (let i = changed.length - 1; i >= 0; i--) {
+          const u = states.get(changed[i])?.user;
+          if (u && typeof u.id === 'string') {
+            lastAuthorByDoc.set(docName, u.id);
+            break;
+          }
+        }
+      });
+    }
   },
   writeState: async (docName, ydoc) => {
     const pending = timers.get(docName);
     if (pending) clearTimeout(pending.handle);
     timers.delete(docName);
     await saveState(docName, ydoc);
+    // Room is empty after this — drop the cached author so a future
+    // session can't accidentally attribute a snapshot to a stale id.
+    lastAuthorByDoc.delete(docName);
   },
 });
 

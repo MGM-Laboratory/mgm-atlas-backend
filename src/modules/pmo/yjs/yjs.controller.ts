@@ -31,6 +31,6 @@ export class YjsController {
 
   @Post('snapshot')
   save(@Body() dto: YjsSnapshotDto) {
-    return this.yjs.saveSnapshot(dto.docKey, dto.state, dto.size);
+    return this.yjs.saveSnapshot(dto.docKey, dto.state, dto.size, dto.authorId ?? null);
   }
 }

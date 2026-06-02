@@ -93,7 +93,42 @@ export class NotesController {
   ) {
     const { projectId, access } = await this.access.resolve(slug, user);
     this.access.assertInsider(access);
-    return this.notes.update(projectId, noteId, dto);
+    return this.notes.update(projectId, noteId, dto, user.id);
+  }
+
+  @Get(':noteId/revisions')
+  async listRevisions(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+    @Param('noteId', ParseUUIDPipe) noteId: string,
+  ) {
+    const { projectId, access } = await this.access.resolve(slug, user);
+    this.access.assertInsider(access);
+    return { revisions: await this.notes.listRevisions(projectId, noteId) };
+  }
+
+  @Get(':noteId/revisions/:revisionId')
+  async getRevision(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+    @Param('noteId', ParseUUIDPipe) noteId: string,
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+  ) {
+    const { projectId, access } = await this.access.resolve(slug, user);
+    this.access.assertInsider(access);
+    return this.notes.getRevision(projectId, noteId, revisionId);
+  }
+
+  @Post(':noteId/revisions/:revisionId/restore')
+  async restoreRevision(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+    @Param('noteId', ParseUUIDPipe) noteId: string,
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+  ) {
+    const { projectId, access } = await this.access.resolve(slug, user);
+    this.access.assertInsider(access);
+    return this.notes.restoreRevision(projectId, noteId, revisionId, user.id);
   }
 
   @Delete(':noteId')

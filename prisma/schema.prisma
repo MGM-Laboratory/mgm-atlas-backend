@@ -183,6 +183,9 @@ model User {
   projectFilesUploaded           ProjectFile[]           @relation("ProjectFileUploader")
   projectNotesCreated            ProjectNote[]           @relation("ProjectNoteCreator")
   whiteboardsCreated             Whiteboard[]            @relation("WhiteboardCreator")
+  noteRevisionsAuthored          NoteRevision[]          @relation("NoteRevisionAuthor")
+  whiteboardRevisionsAuthored    WhiteboardRevision[]    @relation("WhiteboardRevisionAuthor")
+  yDocSnapshotRevisionsAuthored  YDocSnapshotRevision[]  @relation("YDocSnapshotRevisionAuthor")
   // Voice back-relations (no DB impact; Prisma-only).
   voiceChannelsCreated           VoiceChannel[]          @relation("VoiceChannelCreator")
   voiceParticipations            VoiceParticipant[]
@@ -1034,9 +1037,31 @@ model ProjectNote {
   createdBy User          @relation("ProjectNoteCreator", fields: [createdById], references: [id])
   parent    ProjectNote?  @relation("ProjectNoteTree", fields: [parentNoteId], references: [id], onDelete: SetNull)
   children  ProjectNote[] @relation("ProjectNoteTree")
+  revisions NoteRevision[]
 
   @@index([projectId, parentNoteId, order])
   @@index([projectId, deletedAt])
+}
+
+model NoteRevision {
+  id              String      @id @default(uuid())
+  noteId          String
+  /// Frozen copy of the BlockNote JSON document at the moment of save.
+  /// Read by the History drawer to preview / restore old versions.
+  contentSnapshot Json
+  size            Int
+  authorId        String?
+  /// True for the per-hour "milestone" rows that the pruner never deletes.
+  /// Rolling history beyond the last 50 still loses ad-hoc revisions but
+  /// keeps a checkpoint per hour indefinitely.
+  isCheckpoint    Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+
+  note   ProjectNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  author User?       @relation("NoteRevisionAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([noteId, createdAt])
+  @@index([noteId, isCheckpoint])
 }
 
 model Whiteboard {
@@ -1057,8 +1082,25 @@ model Whiteboard {
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdBy User    @relation("WhiteboardCreator", fields: [createdById], references: [id])
+  revisions WhiteboardRevision[]
 
   @@index([projectId, deletedAt])
+}
+
+model WhiteboardRevision {
+  id            String     @id @default(uuid())
+  whiteboardId  String
+  sceneSnapshot Json
+  size          Int
+  authorId      String?
+  isCheckpoint  Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+
+  whiteboard Whiteboard @relation(fields: [whiteboardId], references: [id], onDelete: Cascade)
+  author     User?      @relation("WhiteboardRevisionAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([whiteboardId, createdAt])
+  @@index([whiteboardId, isCheckpoint])
 }
 
 model YDocSnapshot {
@@ -1073,6 +1115,29 @@ model YDocSnapshot {
   createdAt DateTime @default(now())
 
   @@index([docKey])
+}
+
+/// History rows for the binary Yjs CRDT state. The sidecar writes a
+/// new row every time it persists a snapshot; `authorId` carries the
+/// awareness-tracked user who last touched the doc. Pruned hourly to
+/// last-50 + per-hour checkpoints. Used for full-fidelity restore
+/// (collab edit history preserved) in the History drawer; the
+/// JSON-projection tables ([[NoteRevision]] / [[WhiteboardRevision]])
+/// are sufficient when callers only need to preview / single-user
+/// restore.
+model YDocSnapshotRevision {
+  id           String   @id @default(uuid())
+  docKey       String
+  state        Bytes
+  size         Int
+  authorId     String?
+  isCheckpoint Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  author User? @relation("YDocSnapshotRevisionAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([docKey, createdAt])
+  @@index([docKey, isCheckpoint])
 }
 
 // ─── Voice (Discord-parity voice/video/screen-share) ─────────────────────
