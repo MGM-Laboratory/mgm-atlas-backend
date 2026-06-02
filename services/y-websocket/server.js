@@ -207,14 +207,23 @@ server.on('upgrade', (request, socket, head) => {
 
 wss.on('connection', (ws, request, docName) => {
   setupWSConnection(ws, request, { docName, gc: true });
-  // Critical for the save-safety fix: when ANY client of a doc
-  // disconnects (not only the last one — `writeState` already handles
-  // that), schedule a near-immediate flush. Without this, User A
-  // closing their tab in a 2-user room would leave their last few
-  // seconds of edits unpersisted until either the regular debounce
-  // fired or User B also left.
+  // Flush snapshot when a NON-last client of a doc disconnects, so a
+  // 2-user room still persists when one of them leaves. The LAST
+  // client's disconnect is handled by y-websocket's own closeConn
+  // path: it calls `persistence.writeState` and then `doc.destroy()`
+  // which clears the in-memory Y.Doc. If we ALSO schedule a snapshot
+  // here on a last-disconnect, the 250ms timer fires AFTER destroy
+  // and ends up writing the now-empty Y.Doc state over the correct
+  // save — this was the cause of the "notes load empty after a
+  // single-user session ends" regression introduced by PR1's
+  // flush-on-any-disconnect.
+  //
+  // By this listener's turn y-websocket has already removed `ws` from
+  // `doc.conns` (its own 'close' listener was registered before ours
+  // by setupWSConnection), so size === 0 means we WERE the last.
   ws.on('close', () => {
     const ydoc = getYDoc(docName, true);
+    if (!ydoc.conns || ydoc.conns.size === 0) return;
     scheduleSnapshot(docName, ydoc, DISCONNECT_FLUSH_MS);
   });
 });
