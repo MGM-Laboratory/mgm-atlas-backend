@@ -59,13 +59,40 @@ export class YjsService {
     return { state: Buffer.from(snap.state).toString('base64'), version: snap.version };
   }
 
-  /** Persist the debounced CRDT state. Upserts so a missing row self-heals. */
-  async saveSnapshot(docKey: string, stateB64: string, size: number): Promise<{ ok: boolean }> {
+  /** Persist the debounced CRDT state. Upserts the `latest pointer`
+   *  row that the sidecar reads on cold-load AND inserts an immutable
+   *  YDocSnapshotRevision row so the History drawer has binary-level
+   *  history. The pruner (revisions-pruner.service) trims that table
+   *  hourly to the last-50 + per-hour-checkpoint policy.
+   *
+   *  authorId, when provided, comes from the sidecar's last-active
+   *  awareness user (the client whose update triggered the debounce).
+   *  If the id doesn't resolve to a real User we drop it rather than
+   *  failing the snapshot — anonymity is preferable to data loss. */
+  async saveSnapshot(
+    docKey: string,
+    stateB64: string,
+    size: number,
+    authorId?: string | null,
+  ): Promise<{ ok: boolean }> {
     const state = Buffer.from(stateB64, 'base64');
-    await this.prisma.yDocSnapshot.upsert({
-      where: { docKey },
-      create: { docKey, state, size },
-      update: { state, size, version: { increment: 1 } },
+    let resolvedAuthorId: string | null = null;
+    if (authorId) {
+      const exists = await this.prisma.user.findUnique({
+        where: { id: authorId },
+        select: { id: true },
+      });
+      if (exists) resolvedAuthorId = exists.id;
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.yDocSnapshot.upsert({
+        where: { docKey },
+        create: { docKey, state, size },
+        update: { state, size, version: { increment: 1 } },
+      });
+      await tx.yDocSnapshotRevision.create({
+        data: { docKey, state, size, authorId: resolvedAuthorId },
+      });
     });
     return { ok: true };
   }

@@ -91,7 +91,7 @@ export class NotesService {
     });
   }
 
-  async update(projectId: string, noteId: string, dto: UpdateNoteDto) {
+  async update(projectId: string, noteId: string, dto: UpdateNoteDto, actorId?: string) {
     await this.get(projectId, noteId);
     const data: Prisma.ProjectNoteUncheckedUpdateInput = {};
 
@@ -117,7 +117,84 @@ export class NotesService {
       }
     }
 
+    // For content edits we also write a NoteRevision row inside the
+    // same transaction so the History drawer can show the change.
+    // Other field updates (title, parent, order, icon) aren't versioned.
+    if (dto.contentSnapshot !== undefined) {
+      const snapshot = dto.contentSnapshot as Prisma.InputJsonValue;
+      const size = Buffer.byteLength(JSON.stringify(snapshot ?? null));
+      return this.prisma.$transaction(async (tx) => {
+        const updated = await tx.projectNote.update({ where: { id: noteId }, data });
+        await tx.noteRevision.create({
+          data: {
+            noteId,
+            contentSnapshot: snapshot,
+            size,
+            authorId: actorId ?? null,
+          },
+        });
+        return updated;
+      });
+    }
+
     return this.prisma.projectNote.update({ where: { id: noteId }, data });
+  }
+
+  /** History tab listing — newest first, with author name when known. */
+  async listRevisions(projectId: string, noteId: string, take = 100) {
+    await this.get(projectId, noteId);
+    return this.prisma.noteRevision.findMany({
+      where: { noteId },
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: {
+        id: true,
+        createdAt: true,
+        size: true,
+        isCheckpoint: true,
+        author: { select: { id: true, name: true, avatarUrl: true } },
+      },
+    });
+  }
+
+  async getRevision(projectId: string, noteId: string, revisionId: string) {
+    await this.get(projectId, noteId);
+    const rev = await this.prisma.noteRevision.findFirst({
+      where: { id: revisionId, noteId },
+    });
+    if (!rev) throw new NotFoundException('Revision not found.');
+    return rev;
+  }
+
+  /** Roll the live contentSnapshot back to a chosen revision. Records a
+   *  NEW revision so the rollback itself is undoable via "restore the
+   *  most recent pre-rollback revision". Note: this writes the JSON
+   *  projection only — collaborative Yjs state continues from wherever
+   *  it is, which for single-user notes converges immediately and for
+   *  multi-user notes converges on next snapshot. */
+  async restoreRevision(
+    projectId: string,
+    noteId: string,
+    revisionId: string,
+    actorId: string,
+  ) {
+    const rev = await this.getRevision(projectId, noteId, revisionId);
+    const size = Buffer.byteLength(JSON.stringify(rev.contentSnapshot ?? null));
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.projectNote.update({
+        where: { id: noteId },
+        data: { contentSnapshot: rev.contentSnapshot as Prisma.InputJsonValue },
+      });
+      await tx.noteRevision.create({
+        data: {
+          noteId,
+          contentSnapshot: rev.contentSnapshot as Prisma.InputJsonValue,
+          size,
+          authorId: actorId,
+        },
+      });
+      return updated;
+    });
   }
 
   /** Soft-delete a note and its whole live descendant subtree. */

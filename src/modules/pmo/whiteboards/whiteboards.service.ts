@@ -78,7 +78,7 @@ export class WhiteboardsService {
     });
   }
 
-  async update(projectId: string, wbId: string, dto: UpdateWhiteboardDto) {
+  async update(projectId: string, wbId: string, dto: UpdateWhiteboardDto, actorId?: string) {
     await this.get(projectId, wbId);
     const data: Prisma.WhiteboardUncheckedUpdateInput = {};
     if (dto.title !== undefined) data.title = dto.title.trim() || 'Untitled whiteboard';
@@ -87,7 +87,72 @@ export class WhiteboardsService {
     if (dto.sceneSnapshot !== undefined) {
       data.sceneSnapshot = dto.sceneSnapshot as Prisma.InputJsonValue;
     }
+
+    // Scene edits also write a WhiteboardRevision. Title/description
+    // changes do not — they're metadata-only and not history-relevant.
+    if (dto.sceneSnapshot !== undefined) {
+      const snapshot = dto.sceneSnapshot as Prisma.InputJsonValue;
+      const size = Buffer.byteLength(JSON.stringify(snapshot ?? null));
+      return this.prisma.$transaction(async (tx) => {
+        const updated = await tx.whiteboard.update({ where: { id: wbId }, data });
+        await tx.whiteboardRevision.create({
+          data: {
+            whiteboardId: wbId,
+            sceneSnapshot: snapshot,
+            size,
+            authorId: actorId ?? null,
+          },
+        });
+        return updated;
+      });
+    }
+
     return this.prisma.whiteboard.update({ where: { id: wbId }, data });
+  }
+
+  async listRevisions(projectId: string, wbId: string, take = 100) {
+    await this.get(projectId, wbId);
+    return this.prisma.whiteboardRevision.findMany({
+      where: { whiteboardId: wbId },
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: {
+        id: true,
+        createdAt: true,
+        size: true,
+        isCheckpoint: true,
+        author: { select: { id: true, name: true, avatarUrl: true } },
+      },
+    });
+  }
+
+  async getRevision(projectId: string, wbId: string, revisionId: string) {
+    await this.get(projectId, wbId);
+    const rev = await this.prisma.whiteboardRevision.findFirst({
+      where: { id: revisionId, whiteboardId: wbId },
+    });
+    if (!rev) throw new NotFoundException('Revision not found.');
+    return rev;
+  }
+
+  async restoreRevision(projectId: string, wbId: string, revisionId: string, actorId: string) {
+    const rev = await this.getRevision(projectId, wbId, revisionId);
+    const size = Buffer.byteLength(JSON.stringify(rev.sceneSnapshot ?? null));
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.whiteboard.update({
+        where: { id: wbId },
+        data: { sceneSnapshot: rev.sceneSnapshot as Prisma.InputJsonValue },
+      });
+      await tx.whiteboardRevision.create({
+        data: {
+          whiteboardId: wbId,
+          sceneSnapshot: rev.sceneSnapshot as Prisma.InputJsonValue,
+          size,
+          authorId: actorId,
+        },
+      });
+      return updated;
+    });
   }
 
   async remove(projectId: string, wbId: string) {

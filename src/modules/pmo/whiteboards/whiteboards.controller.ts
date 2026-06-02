@@ -115,7 +115,42 @@ export class WhiteboardsController {
   ) {
     const { projectId, access } = await this.access.resolve(slug, user);
     this.access.assertInsider(access);
-    return this.whiteboards.update(projectId, wbId, dto);
+    return this.whiteboards.update(projectId, wbId, dto, user.id);
+  }
+
+  @Get(':wbId/revisions')
+  async listRevisions(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+    @Param('wbId', ParseUUIDPipe) wbId: string,
+  ) {
+    const { projectId, access } = await this.access.resolve(slug, user);
+    this.access.assertInsider(access);
+    return { revisions: await this.whiteboards.listRevisions(projectId, wbId) };
+  }
+
+  @Get(':wbId/revisions/:revisionId')
+  async getRevision(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+    @Param('wbId', ParseUUIDPipe) wbId: string,
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+  ) {
+    const { projectId, access } = await this.access.resolve(slug, user);
+    this.access.assertInsider(access);
+    return this.whiteboards.getRevision(projectId, wbId, revisionId);
+  }
+
+  @Post(':wbId/revisions/:revisionId/restore')
+  async restoreRevision(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+    @Param('wbId', ParseUUIDPipe) wbId: string,
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+  ) {
+    const { projectId, access } = await this.access.resolve(slug, user);
+    this.access.assertInsider(access);
+    return this.whiteboards.restoreRevision(projectId, wbId, revisionId, user.id);
   }
 
   @Delete(':wbId')
