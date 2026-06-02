@@ -455,6 +455,10 @@ export class TasksService {
       });
       if (!status) throw new BadRequestException('Status not found in this list.');
     }
+    const beforeStatusId = existing.statusId;
+    const beforePosition = existing.positionInStatus.toString();
+    const afterPosition = String(dto.positionInStatus);
+
     await this.prisma.task.update({
       where: { id: taskId },
       data: {
@@ -462,12 +466,36 @@ export class TasksService {
         positionInStatus: new Prisma.Decimal(dto.positionInStatus),
       },
     });
-    if (dto.statusId !== existing.statusId) {
+
+    const statusChanged = dto.statusId !== beforeStatusId;
+    const positionChanged = beforePosition !== afterPosition;
+
+    // Every move now leaves an audit entry — PR3 (durable undo) reads
+    // these to build the inverse op. Existing readers of the feed see
+    // STATUS_CHANGED for column moves exactly as before; pure reorders
+    // get the new MOVED kind which they can choose to render or hide.
+    if (statusChanged) {
       await this.activity.record({
         taskId,
         actorId: user.id,
         kind: TaskActivityKind.STATUS_CHANGED,
-        payload: { before: existing.statusId, after: dto.statusId },
+        payload: {
+          before: beforeStatusId,
+          after: dto.statusId,
+          beforePosition,
+          afterPosition,
+        },
+      });
+    } else if (positionChanged) {
+      await this.activity.record({
+        taskId,
+        actorId: user.id,
+        kind: TaskActivityKind.MOVED,
+        payload: {
+          statusId: dto.statusId,
+          beforePosition,
+          afterPosition,
+        },
       });
     }
     return this.get(projectId, taskId);
