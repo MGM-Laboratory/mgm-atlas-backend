@@ -9,9 +9,10 @@ export interface ChatSearchHit {
   id: string;
   channelId: string;
   channelName: string;
-  projectId: string;
-  projectSlug: string;
-  projectTitle: string;
+  /** null for hits in workspace-global channels (projectId = null). */
+  projectId: string | null;
+  projectSlug: string | null;
+  projectTitle: string | null;
   authorId: string;
   authorName: string;
   /** Snippet with <mark>…</mark> wrapping the matched terms (escaped). */
@@ -41,9 +42,9 @@ interface RawHit {
   id: string;
   channelId: string;
   channelName: string;
-  projectId: string;
-  projectSlug: string;
-  projectTitle: string;
+  projectId: string | null;
+  projectSlug: string | null;
+  projectTitle: string | null;
   authorId: string;
   authorName: string;
   snippet: string;
@@ -113,7 +114,9 @@ export class ChatSearchService {
           m."createdAt"   AS "createdAt"
         FROM "ChatMessage" m
         JOIN "ChatChannel" c ON c."id" = m."channelId"
-        JOIN "Project"     p ON p."id" = c."projectId"
+        -- LEFT: workspace-global channels have projectId = NULL and must
+        -- still surface (with null project columns), not get inner-joined away.
+        LEFT JOIN "Project" p ON p."id" = c."projectId"
         JOIN "User"        u ON u."id" = m."authorId"
         WHERE
           m."deletedAt" IS NULL
@@ -153,6 +156,8 @@ export class ChatSearchService {
         select: { id: true, projectId: true },
       });
       if (!channel) return [];
+      // Workspace-global channels are searchable by every authenticated user.
+      if (channel.projectId === null) return [channel.id];
       if (!accessibleProjectIds.includes(channel.projectId)) return [];
       return [channel.id];
     }
@@ -169,9 +174,10 @@ export class ChatSearchService {
       return channels.map((c) => c.id);
     }
 
-    // global
+    // global: every accessible project's channels plus the workspace-global
+    // channels (projectId = null), which everyone may search.
     const channels = await this.prisma.chatChannel.findMany({
-      where: { projectId: { in: accessibleProjectIds } },
+      where: { OR: [{ projectId: { in: accessibleProjectIds } }, { projectId: null }] },
       select: { id: true },
     });
     return channels.map((c) => c.id);

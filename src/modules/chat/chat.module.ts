@@ -5,7 +5,9 @@ import { NotificationsModule } from '@/modules/notifications/notifications.modul
 import { ProjectsModule } from '@/modules/projects/projects.module';
 import { AdminStickersController } from './admin-stickers.controller';
 import { ChatController } from './chat.controller';
+import { ChatChannelOpsController } from './chat-channel-ops.controller';
 import { ChatGifsController } from './chat-gifs.controller';
+import { ChatGlobalController } from './chat-global.controller';
 import { ChatLinkPreviewController } from './chat-link-preview.controller';
 import { ChatMembersController } from './chat-members.controller';
 import { ChatMessagesController } from './chat-messages.controller';
@@ -16,6 +18,7 @@ import { QuickReplyController } from './quick-reply.controller';
 import { ChatGateway } from './gateway/chat.gateway';
 import { WsSessionGuard } from './gateway/ws-session.guard';
 import { ChatAttachmentsService } from './services/chat-attachments.service';
+import { ChatChannelAccessService } from './services/chat-channel-access.service';
 import { ChatChannelsService } from './services/chat-channels.service';
 import { ChatGifsService } from './services/chat-gifs.service';
 import { ChatLinkPreviewService } from './services/chat-link-preview.service';
@@ -44,6 +47,8 @@ import { ChatTypingService } from './services/chat-typing.service';
   imports: [AuthModule, ProjectsModule, NotificationsModule, MediaModule],
   controllers: [
     ChatController,
+    ChatGlobalController,
+    ChatChannelOpsController,
     ChatMessagesController,
     ChatOverviewController,
     ChatLinkPreviewController,
@@ -55,6 +60,7 @@ import { ChatTypingService } from './services/chat-typing.service';
     QuickReplyController,
   ],
   providers: [
+    ChatChannelAccessService,
     ChatChannelsService,
     ChatMessagesService,
     ChatReactionsService,

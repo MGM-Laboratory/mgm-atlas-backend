@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { AuthenticatedUser } from '@/common/types/authenticated-user.type';
 import { PrismaService } from '@/prisma/prisma.service';
+import { ChatChannelsService } from './chat-channels.service';
 
 /**
  * Powers the navbar "chat" shortcut and the global /chat page on the
  * frontend. Returns the projects this user has chat access to, with
- * each project's channels and unread counts.
+ * each project's channels and unread counts, plus the workspace-global
+ * channels (additive `workspace` key — older clients ignore it).
  *
  * Unread is computed cheaply: count messages newer than the channel
  * member's lastReadAt; if there's no lastReadAt yet we treat every
@@ -13,7 +15,10 @@ import { PrismaService } from '@/prisma/prisma.service';
  */
 @Injectable()
 export class ChatOverviewService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly channels: ChatChannelsService,
+  ) {}
 
   async listMyProjects(user: AuthenticatedUser) {
     const projects = await this.prisma.project.findMany({
@@ -28,7 +33,9 @@ export class ChatOverviewService {
         thumbnailUrl: true,
         updatedAt: true,
         chatChannels: {
-          where: { isArchived: false },
+          // isVoiceThread channels are voice-channel-paired threads and
+          // are never user-facing in chat lists (see ChatChannelsService.list).
+          where: { isArchived: false, isVoiceThread: false },
           orderBy: [{ isGeneral: 'desc' }, { createdAt: 'asc' }],
           select: {
             id: true,
@@ -84,6 +91,54 @@ export class ChatOverviewService {
         }),
     );
 
-    return { projects: projectsWithUnread };
+    return { projects: projectsWithUnread, workspace: await this.workspaceOverview(user) };
+  }
+
+  /**
+   * Workspace-global channels with the same unread computation as the
+   * project channels above. Ensures the workspace #general exists first
+   * so the section is never empty on a fresh deploy.
+   */
+  private async workspaceOverview(user: AuthenticatedUser) {
+    await this.channels.ensureGlobalGeneral(user.id);
+    const rows = await this.prisma.chatChannel.findMany({
+      where: { projectId: null, isVoiceThread: false, isArchived: false },
+      orderBy: [{ isGeneral: 'desc' }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        isGeneral: true,
+        updatedAt: true,
+        members: {
+          where: { userId: user.id },
+          select: { lastReadAt: true },
+        },
+      },
+    });
+
+    const channels = await Promise.all(
+      rows.map(async (c) => {
+        const lastReadAt = c.members[0]?.lastReadAt ?? null;
+        const unread = await this.prisma.chatMessage.count({
+          where: {
+            channelId: c.id,
+            deletedAt: null,
+            authorId: { not: user.id },
+            ...(lastReadAt ? { createdAt: { gt: lastReadAt } } : {}),
+          },
+        });
+        return {
+          id: c.id,
+          name: c.name,
+          slug: c.slug,
+          isGeneral: c.isGeneral,
+          unread: Math.min(unread, 99),
+          updatedAt: c.updatedAt,
+        };
+      }),
+    );
+
+    return { channels, unread: channels.reduce((sum, ch) => sum + ch.unread, 0) };
   }
 }

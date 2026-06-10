@@ -1,13 +1,4 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Patch,
-  Post,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@/common/types/authenticated-user.type';
@@ -41,7 +32,10 @@ export class VoiceLobbyController {
 
   /** List lobby channels — any authenticated user. */
   @Get()
-  async list() {
+  async list(@CurrentUser() user: AuthenticatedUser) {
+    // Lazy-ensure the default "Voice Lobby" so the workspace section is
+    // never empty — no migration backfill needed (idempotent, see service).
+    await this.channels.ensureDefaultLobby(user.id);
     const channels = await this.channels.listLobby();
     const withRoster = await Promise.all(
       channels.map(async (c) => ({
@@ -54,10 +48,7 @@ export class VoiceLobbyController {
 
   @UseGuards(AdminGuard)
   @Post()
-  async create(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: CreateVoiceChannelDto,
-  ) {
+  async create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateVoiceChannelDto) {
     const channel = await this.channels.createLobby(user.id, dto);
     this.realtime.channelCreated(channel);
     return channel;
@@ -65,10 +56,7 @@ export class VoiceLobbyController {
 
   @UseGuards(AdminGuard)
   @Patch(':channelId')
-  async update(
-    @Param('channelId') channelId: string,
-    @Body() dto: UpdateVoiceChannelDto,
-  ) {
+  async update(@Param('channelId') channelId: string, @Body() dto: UpdateVoiceChannelDto) {
     const channel = await this.channels.update(channelId, dto);
     this.realtime.channelUpdated(channel);
     return channel;

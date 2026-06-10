@@ -106,7 +106,7 @@ export class ChatMessagesService {
 
   async create(
     channelId: string,
-    projectId: string,
+    projectId: string | null,
     user: AuthenticatedUser,
     dto: CreateMessageDto,
   ) {

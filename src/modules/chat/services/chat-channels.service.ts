@@ -32,6 +32,82 @@ export class ChatChannelsService {
     });
   }
 
+  /** Workspace-global channels (projectId = null), e.g. the workspace #general. */
+  listGlobal() {
+    return this.prisma.chatChannel.findMany({
+      where: { projectId: null, isVoiceThread: false },
+      orderBy: [{ isGeneral: 'desc' }, { isArchived: 'asc' }, { createdAt: 'asc' }],
+      select: this.publicSelect,
+    });
+  }
+
+  /**
+   * Lazily create the workspace #general. Idempotent and concurrency-safe:
+   * ChatChannel_one_general_global (partial unique index) makes the loser
+   * of a race hit P2002, after which we just read the winner's row.
+   * Attribution: first admin by signup date, falling back to the requester.
+   */
+  async ensureGlobalGeneral(requestingUserId: string) {
+    const existing = await this.prisma.chatChannel.findFirst({
+      where: { projectId: null, isGeneral: true },
+      select: this.publicSelect,
+    });
+    if (existing) return existing;
+
+    const admin = await this.prisma.user.findFirst({
+      where: { isAdmin: true },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    try {
+      return await this.prisma.chatChannel.create({
+        data: {
+          projectId: null,
+          name: 'general',
+          slug: 'general',
+          topic: 'Workspace-wide discussion',
+          isGeneral: true,
+          createdById: admin?.id ?? requestingUserId,
+        },
+        select: this.publicSelect,
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        return this.prisma.chatChannel.findFirstOrThrow({
+          where: { projectId: null, isGeneral: true },
+          select: this.publicSelect,
+        });
+      }
+      throw err;
+    }
+  }
+
+  /** Workspace-global channel. Caller must be admin (enforced by controller). */
+  async createGlobal(user: AuthenticatedUser, dto: CreateChannelDto) {
+    const name = dto.name.trim().toLowerCase();
+    if (name === 'general') {
+      throw new BadRequestException('`general` is reserved for the workspace general channel.');
+    }
+    try {
+      return await this.prisma.chatChannel.create({
+        data: {
+          projectId: null,
+          name,
+          slug: toSlug(name),
+          topic: dto.topic?.trim() || null,
+          createdById: user.id,
+          isGeneral: false,
+        },
+        select: this.publicSelect,
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException(`Workspace channel "${name}" already exists.`);
+      }
+      throw err;
+    }
+  }
+
   async findById(channelId: string) {
     const channel = await this.prisma.chatChannel.findUnique({
       where: { id: channelId },

@@ -16,6 +16,8 @@ import type { ChatMessagePublic } from './chat-messages.service';
  *
  * Room conventions:
  *   project:{id}  — project-level fanout (channel.created, unread.update, presence)
+ *   global        — workspace-global fanout (projectId = null channels);
+ *                   every authenticated socket joins it on connect
  *   channel:{id}  — per-channel events (message, reaction, pin, typing)
  */
 @Injectable()
@@ -32,8 +34,8 @@ export class ChatRealtimePublisher {
     return `channel:${channelId}`;
   }
 
-  private projectRoom(projectId: string) {
-    return `project:${projectId}`;
+  private projectRoom(projectId: string | null) {
+    return projectId ? `project:${projectId}` : 'global';
   }
 
   private emit(room: string, event: string, payload: unknown): void {
@@ -45,7 +47,7 @@ export class ChatRealtimePublisher {
 
   messageCreated(
     channelId: string,
-    projectId: string,
+    projectId: string | null,
     message: ChatMessagePublic,
     clientMessageId?: string,
   ): void {
@@ -84,15 +86,15 @@ export class ChatRealtimePublisher {
 
   // ─── Channels ──────────────────────────────────────────────────────
 
-  channelCreated(projectId: string, channel: ChatChannelPublic): void {
+  channelCreated(projectId: string | null, channel: ChatChannelPublic): void {
     this.emit(this.projectRoom(projectId), 'channel.created', channel);
   }
 
-  channelUpdated(projectId: string, channel: ChatChannelPublic): void {
+  channelUpdated(projectId: string | null, channel: ChatChannelPublic): void {
     this.emit(this.projectRoom(projectId), 'channel.updated', channel);
   }
 
-  channelArchived(projectId: string, channelId: string): void {
+  channelArchived(projectId: string | null, channelId: string): void {
     this.emit(this.projectRoom(projectId), 'channel.archived', { channelId });
   }
 }

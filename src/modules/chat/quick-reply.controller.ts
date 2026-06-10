@@ -13,9 +13,9 @@ import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@/common/types/authenticated-user.type';
 import { PrismaService } from '@/prisma/prisma.service';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
-import { ProjectAccessService } from '@/modules/projects/project-access.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { QuickReplyDto } from './dto/quick-reply.dto';
+import { ChatChannelAccessService } from './services/chat-channel-access.service';
 import { ChatMessagesService } from './services/chat-messages.service';
 import { ChatNotificationsService } from './services/chat-notifications.service';
 import { ChatRealtimePublisher } from './services/chat-realtime.publisher';
@@ -43,7 +43,7 @@ export class QuickReplyController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
-    private readonly access: ProjectAccessService,
+    private readonly channelAccess: ChatChannelAccessService,
     private readonly messages: ChatMessagesService,
     private readonly realtime: ChatRealtimePublisher,
     private readonly chatNotifications: ChatNotificationsService,
@@ -76,20 +76,22 @@ export class QuickReplyController {
 
     const meta = (notification.metadata ?? {}) as Record<string, unknown>;
     const channelId = typeof meta.channelId === 'string' ? meta.channelId : null;
-    const projectId = typeof meta.projectId === 'string' ? meta.projectId : null;
-    if (!channelId || !projectId) {
+    if (!channelId) {
       throw new BadRequestException('Notification is missing chat routing metadata.');
     }
 
     // Walk the same access check the regular chat POST does so a stale
     // notification (e.g. user removed from project after it fired) doesn't
-    // let them write into a channel they no longer belong to.
-    const { access } = await this.access.resolve(projectId, user);
+    // let them write into a channel they no longer belong to. Resolving
+    // by channelId (not metadata projectId) also covers workspace-global
+    // channels, whose metadata carries projectId: null.
+    const { channel, access } = await this.channelAccess.resolveByChannelId(channelId, user);
     try {
-      this.access.assertInsider(access);
+      this.channelAccess.assertInsider(access);
     } catch {
       throw new ForbiddenException('You no longer have access to this chat.');
     }
+    const projectId = channel.projectId;
 
     // Replicate the exact create→publish→mention pipeline used by
     // chat.controller.createMessage so a quick-reply is indistinguishable
@@ -114,7 +116,9 @@ export class QuickReplyController {
       messageId: message.id,
       channelId,
       projectId,
-      link: notification.link ?? `/projects/${projectId}/chat/${channelId}`,
+      link:
+        notification.link ??
+        (projectId ? `/projects/${projectId}/chat/${channelId}` : `/chat/global/${channelId}`),
     };
   }
 }
