@@ -6,7 +6,8 @@ import { PrismaService } from '@/prisma/prisma.service';
 import type { ChatMessagePublic } from './chat-messages.service';
 
 interface OnMessageCreatedInput {
-  projectId: string;
+  /** null = workspace-global channel (every user is a potential recipient). */
+  projectId: string | null;
   channelId: string;
   message: ChatMessagePublic;
   mentions: string[];
@@ -41,11 +42,15 @@ export class ChatNotificationsService {
     const recipients = await this.resolveRecipients(projectId, mentions, author.id);
     if (recipients.length === 0) return;
 
-    const project = await this.prisma.project.findUnique({
-      where: { id: projectId },
-      select: { slug: true, title: true },
-    });
-    if (!project) return;
+    // Global channels (projectId = null) have no project row — they
+    // belong to the workspace itself.
+    const project = projectId
+      ? await this.prisma.project.findUnique({
+          where: { id: projectId },
+          select: { slug: true, title: true },
+        })
+      : null;
+    if (projectId && !project) return;
 
     const channel = await this.prisma.chatChannel.findUnique({
       where: { id: channelId },
@@ -62,7 +67,7 @@ export class ChatNotificationsService {
         type: 'CHAT_MENTION',
         title: `@${author.name} mentioned you in #${channelName}`,
         body: this.preview(message.markdown),
-        link: `/projects/${project.slug}/chat/${channelId}`,
+        link: project ? `/projects/${project.slug}/chat/${channelId}` : `/chat/global/${channelId}`,
         metadata: { messageId: message.id, channelId, projectId },
         pushTag: `chat:${channelId}`,
       },
@@ -72,8 +77,8 @@ export class ChatNotificationsService {
     // sidestep the AtlasWebhookEvent type union until P5 widens it.
     void this.webhooks
       .dispatch('chat.user_mentioned' as unknown as 'project.invited', {
-        projectSlug: project.slug,
-        projectTitle: project.title,
+        projectSlug: project?.slug ?? null,
+        projectTitle: project?.title ?? 'Workspace',
         channelName,
         channelId,
         messageId: message.id,
@@ -86,14 +91,19 @@ export class ChatNotificationsService {
       );
   }
 
-  private async resolveRecipients(projectId: string, mentionIds: string[], authorId: string) {
+  private async resolveRecipients(
+    projectId: string | null,
+    mentionIds: string[],
+    authorId: string,
+  ) {
     if (mentionIds.length === 0) return [];
-    // Only notify mentioned users who actually have access to the project.
-    // Admins always have access; non-admins must be a project member.
+    // Only notify mentioned users who actually have access to the channel.
+    // Project channels: admins always have access; non-admins must be a
+    // member. Global channels: every authenticated user has access.
     return this.prisma.user.findMany({
       where: {
         id: { in: mentionIds.filter((id) => id !== authorId) },
-        OR: [{ isAdmin: true }, { memberships: { some: { projectId } } }],
+        ...(projectId ? { OR: [{ isAdmin: true }, { memberships: { some: { projectId } } }] } : {}),
       },
       select: { id: true, name: true, email: true },
     });

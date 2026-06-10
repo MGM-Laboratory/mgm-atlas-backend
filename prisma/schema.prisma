@@ -519,10 +519,15 @@ model WebhookDelivery {
 // an auto-created `#general` (isGeneral = true). Visibility is enforced
 // at the application layer via ProjectAccessService — only insiders
 // (admin / project manager / contributor) may read or write.
+// projectId = NULL marks a workspace-global channel (mirrors
+// VoiceChannel.projectId): readable/writable by every authenticated user,
+// managed by admins only. Uniqueness of global channel names + the single
+// global #general live in raw-SQL partial indexes (13_workspace_global_chat)
+// because Prisma can't model partial indexes.
 
 model ChatChannel {
   id          String    @id @default(uuid())
-  projectId   String
+  projectId   String?
   name        String
   slug        String
   topic       String?
@@ -539,7 +544,7 @@ model ChatChannel {
   updatedAt   DateTime  @updatedAt
   archivedAt  DateTime?
 
-  project   Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project?            @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdBy User                @relation("ChatChannelCreator", fields: [createdById], references: [id])
   messages  ChatMessage[]
   members   ChatChannelMember[]

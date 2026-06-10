@@ -13,6 +13,7 @@ import { AuthenticatedUser } from '@/common/types/authenticated-user.type';
 import { PrismaService } from '@/prisma/prisma.service';
 import { ProjectAccessService } from '@/modules/projects/project-access.service';
 import { VoiceFeatureFlagGuard } from '../guards/voice-feature-flag.guard';
+import { VoiceChannelsService } from '../services/voice-channels.service';
 import { VoiceParticipantsService } from '../services/voice-participants.service';
 import { VoiceRealtimePublisher } from '../services/voice-realtime.publisher';
 
@@ -34,16 +35,14 @@ export class VoiceJoinController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: ProjectAccessService,
+    private readonly channels: VoiceChannelsService,
     private readonly participants: VoiceParticipantsService,
     private readonly realtime: VoiceRealtimePublisher,
   ) {}
 
   /** Join: mint a LiveKit JWT scoped to this channel's room. */
   @Post('join')
-  async join(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('channelId') channelId: string,
-  ) {
+  async join(@CurrentUser() user: AuthenticatedUser, @Param('channelId') channelId: string) {
     const channel = await this.prisma.voiceChannel.findUnique({
       where: { id: channelId },
       select: { id: true, projectId: true, archivedAt: true, name: true },
@@ -85,10 +84,7 @@ export class VoiceJoinController {
 
   /** Leave: close the participant row. Idempotent. */
   @Post('leave')
-  async leave(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('channelId') channelId: string,
-  ) {
+  async leave(@CurrentUser() user: AuthenticatedUser, @Param('channelId') channelId: string) {
     const channel = await this.prisma.voiceChannel.findUnique({
       where: { id: channelId },
       select: { id: true, projectId: true },
@@ -103,18 +99,16 @@ export class VoiceJoinController {
 
   /**
    * Resolve the paired ChatChannel id for a voice channel's text
-   * thread (§10). Lobby channels (projectId=null) currently have no
-   * paired thread — clients receive 404 and hide the chat side panel.
+   * thread (§10). Lobby channels' threads are workspace-global
+   * ChatChannels (projectId = null); lobby channels created before
+   * 13_workspace_global_chat get theirs lazily backfilled here on
+   * first open.
    *
    * Access mirrors join: per-project channels gated by insider;
-   * lobby channels are open to any authenticated user (but currently
-   * always 404 here since lobby threads aren't supported yet).
+   * lobby channels are open to any authenticated user.
    */
   @Get('thread')
-  async getThread(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('channelId') channelId: string,
-  ) {
+  async getThread(@CurrentUser() user: AuthenticatedUser, @Param('channelId') channelId: string) {
     const channel = await this.prisma.voiceChannel.findUnique({
       where: { id: channelId },
       select: {
@@ -133,13 +127,17 @@ export class VoiceJoinController {
       const { access } = await this.access.resolve(channel.projectId, user);
       this.access.assertInsider(access);
     }
-    if (!channel.textThreadId) {
-      // Either a lobby channel (unsupported) or an existing voice
-      // channel that pre-dates the Phase 4 backfill.
-      throw new NotFoundException('No text thread for this voice channel.');
+    let threadId = channel.textThreadId;
+    if (!threadId) {
+      if (channel.projectId) {
+        // Project channel pre-dating the Phase 4 backfill — the seed
+        // script handles these; don't create threads on the read path.
+        throw new NotFoundException('No text thread for this voice channel.');
+      }
+      threadId = await this.channels.ensureLobbyThread(channel.id);
     }
     return {
-      chatChannelId: channel.textThreadId,
+      chatChannelId: threadId,
       projectId: channel.projectId,
       projectSlug: channel.project?.slug ?? null,
     };

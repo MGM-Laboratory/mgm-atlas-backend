@@ -13,6 +13,7 @@ import type { Namespace, Socket } from 'socket.io';
 import { AuthenticatedUser } from '@/common/types/authenticated-user.type';
 import { SessionService } from '@/modules/auth/session.service';
 import { ProjectAccessService } from '@/modules/projects/project-access.service';
+import { ChatChannelAccessService } from '../services/chat-channel-access.service';
 import { ChatPresenceService } from '../services/chat-presence.service';
 import { ChatRealtimePublisher } from '../services/chat-realtime.publisher';
 import { ChatTypingService } from '../services/chat-typing.service';
@@ -48,6 +49,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   constructor(
     private readonly sessionService: SessionService,
     private readonly access: ProjectAccessService,
+    private readonly channelAccess: ChatChannelAccessService,
     private readonly presence: ChatPresenceService,
     private readonly typing: ChatTypingService,
     private readonly realtime: ChatRealtimePublisher,
@@ -77,6 +79,12 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     socket.data.user = user;
     socket.data.projects = new Set<string>();
 
+    // Every authenticated user can read workspace-global channels, so
+    // every socket joins the global fanout room (unread.update and
+    // channel.* events for projectId = null channels) — no client
+    // subscribe step needed. Presence stays project-scoped.
+    await socket.join('global');
+
     const firstSocket = await this.presence.addSocket(user.id, socket.id);
     this.logger.debug(`connect user=${user.id} sock=${socket.id} firstSocket=${firstSocket}`);
   }
@@ -104,10 +112,23 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   @SubscribeMessage('chat:subscribe')
   async subscribe(
     @ConnectedSocket() socket: Socket,
-    @MessageBody() body: { projectId: string; channelId?: string },
+    @MessageBody() body: { projectId?: string; channelId?: string },
   ): Promise<{ ok: boolean; error?: string }> {
     const user = socket.data.user as AuthenticatedUser;
     try {
+      // No projectId → workspace-global channel (or any channel reached
+      // by id). The access service handles both: global channels admit
+      // every authenticated user; project channels still require insider.
+      if (!body.projectId) {
+        if (!body.channelId) {
+          return { ok: false, error: 'projectId or channelId required.' };
+        }
+        const { access } = await this.channelAccess.resolveByChannelId(body.channelId, user);
+        this.channelAccess.assertInsider(access);
+        await socket.join(`channel:${body.channelId}`);
+        return { ok: true };
+      }
+
       const { projectId, access } = await this.access.resolve(body.projectId, user);
       this.access.assertInsider(access);
 
