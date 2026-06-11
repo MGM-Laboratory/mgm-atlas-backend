@@ -1334,3 +1334,16 @@ model VoiceRecording {
   @@index([status])
   @@index([retentionUntil])
 }
+
+// ─── Feature flags ─────────────────────────────────────────────────────────
+// Runtime kill switches / gradual-rollout toggles, flipped from the admin
+// console (no redeploy). Unknown keys evaluate to false (fail-safe). Additive
+// table — the previous image simply ignores it, so rollback stays safe.
+model FeatureFlag {
+  key         String   @id
+  enabled     Boolean  @default(false)
+  description String?
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
