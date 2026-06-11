@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { Request, Response } from 'express';
 
 interface ErrorBody {
@@ -80,6 +81,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
     };
 
     if (status >= 500) {
+      // Report only real server errors to Sentry/GlitchTip (no-op without DSN).
+      // Response shape is unchanged — this is purely observability.
+      Sentry.captureException(exception);
       this.logger.error(
         `${request.method} ${request.url} → ${status} ${error}`,
         exception instanceof Error ? exception.stack : undefined,
