@@ -115,7 +115,25 @@
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
+    "coveragePathIgnorePatterns": [
+      "\\.spec\\.ts$",
+      "/main.ts$",
+      "\\.module\\.ts$",
+      "\\.dto\\.ts$"
+    ],
     "coverageDirectory": "../coverage",
+    "coverageReporters": [
+      "text-summary",
+      "lcov"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "statements": 2.5,
+        "branches": 2.5,
+        "functions": 1.5,
+        "lines": 2.5
+      }
+    },
     "testEnvironment": "node"
   }
 }
