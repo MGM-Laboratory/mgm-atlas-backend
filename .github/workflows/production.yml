@@ -84,11 +84,94 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # 2) APPROVAL GATE: move the floating `latest` tag (what Watchtower pulls)
-  #    to the freshly-built digest. Requires a reviewer on the `production`
-  #    GitHub Environment, so production only changes after a human approves.
-  release-production:
+  # 1b) Scan the freshly-built image for OS/dependency vulns. Report-only for
+  #     now (SARIF → Security tab); flip exit-code to 1 to gate once triaged.
+  scan-image:
     needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}
+          format: sarif
+          output: trivy-image.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+      - name: Upload SARIF
+        if: ${{ always() && hashFiles('trivy-image.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+  # 1c) Supply chain: SBOM (SPDX + CycloneDX), keyless Cosign signature +
+  #     SBOM attestation on the digest, and SLSA build provenance. All keyed
+  #     to the immutable digest that release-production will promote.
+  sbom-sign:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write       # keyless cosign + provenance OIDC
+      attestations: write   # actions/attest-build-provenance
+    env:
+      IMAGE_DIGEST: ${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Generate SBOM (SPDX + CycloneDX)
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: ${{ env.IMAGE_DIGEST }}
+          output-file: sbom.spdx.json
+          format: spdx-json
+
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: ${{ env.IMAGE_DIGEST }}
+          output-file: sbom.cdx.json
+          format: cyclonedx-json
+
+      - name: Upload SBOM artifacts (audit, 90d)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom-${{ needs.build.outputs.sha7 }}
+          path: |
+            sbom.spdx.json
+            sbom.cdx.json
+          retention-days: 90
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+
+      - name: Sign image (keyless) + attest SBOM
+        run: |
+          set -euo pipefail
+          cosign sign --yes "${IMAGE_DIGEST}"
+          cosign attest --yes --type spdxjson --predicate sbom.spdx.json "${IMAGE_DIGEST}"
+
+      - name: Attest SLSA build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-name: ${{ needs.build.outputs.image }}
+          subject-digest: ${{ needs.build.outputs.digest }}
+          push-to-registry: false
+
+  # 2) APPROVAL GATE: verify the signature, then move the floating `latest`
+  #    tag (what Watchtower pulls) to the built+signed digest. Requires a
+  #    reviewer on the `production` GitHub Environment.
+  release-production:
+    needs: [build, scan-image, sbom-sign]
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -99,6 +182,17 @@ jobs:
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+
+      - name: Verify the image signature came from this repo's CI
+        run: |
+          set -euo pipefail
+          cosign verify "${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}" \
+            --certificate-identity-regexp "^https://github.com/MGM-Laboratory/mgm-atlas-backend/\.github/workflows/.+@refs/heads/main$" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" > /dev/null
+          echo "Signature verified."
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
