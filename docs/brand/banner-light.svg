@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-label="MGM Atlas — Backend, NestJS API">
+  <title>MGM Atlas — Backend · NestJS API</title>
+  <g transform="translate(262 75)">
+    <rect x="0" y="0" width="70" height="70" rx="16" fill="#3a6dc5"/>
+    <circle cx="115" cy="35" r="35" fill="#f7bf33"/>
+    <path d="M35 88 L62 136 L8 136 Z" fill="#f94141" stroke="#f94141" stroke-width="14" stroke-linejoin="round"/>
+    <path d="M80 150 A35 35 0 0 1 150 150 Z" fill="#0f8657"/>
+  </g>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+    <text x="456" y="163" font-size="94" font-weight="700" letter-spacing="-2.5" fill="#0e1116">MGM Atlas</text>
+    <rect x="462" y="186" width="120" height="3" rx="1.5" fill="#3a6dc5"/>
+    <text x="462" y="231" font-size="29" font-weight="500" letter-spacing="0.5" fill="#6b7280">Backend · NestJS API</text>
+  </g>
+</svg>
