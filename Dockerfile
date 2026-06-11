@@ -31,6 +31,13 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
+# Build identity surfaced by GET /api/v1/version. Empty by default so a local
+# `docker build` without these args still produces a working image.
+ARG GIT_SHA=""
+ARG BUILD_TIME=""
+ENV GIT_SHA=$GIT_SHA
+ENV BUILD_TIME=$BUILD_TIME
+
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma

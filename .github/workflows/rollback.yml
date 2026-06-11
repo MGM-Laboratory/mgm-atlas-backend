@@ -1,0 +1,105 @@
+name: rollback-production
+
+# Roll production back (or forward) to a previously-built immutable image by
+# re-pointing the floating `latest` tag at it. Watchtower on keikaku then
+# converges. Gated by the same `production` environment approval as a deploy.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Immutable tag to promote to :latest (e.g. latest-abc1234)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      image: ${{ steps.img.outputs.image }}
+    steps:
+      - name: Resolve image name
+        id: img
+        run: echo "image=${{ vars.DOCKERHUB_USERNAME }}/${{ vars.IMAGE_NAME }}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Verify the target tag exists
+        env:
+          IMAGE: ${{ steps.img.outputs.image }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          echo "Inspecting ${IMAGE}:${IMAGE_TAG}"
+          docker buildx imagetools inspect "${IMAGE}:${IMAGE_TAG}" >/dev/null
+          echo "Target exists."
+
+  rollback:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Promote target tag to :latest
+        env:
+          IMAGE: ${{ needs.validate.outputs.image }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          echo "Rolling ${IMAGE}:latest -> ${IMAGE}:${IMAGE_TAG}"
+          docker buildx imagetools create -t "${IMAGE}:latest" "${IMAGE}:${IMAGE_TAG}"
+
+  verify-deploy:
+    needs: [validate, rollback]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Wait for production to converge on the rolled-back tag
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          # latest-<sha7> -> sha7
+          want="$(printf '%s' "$IMAGE_TAG" | sed 's/^.*latest-//')"
+          url='https://atlas.labmgm.org/api/v1/version'
+          echo "Waiting for $url to report sha=$want (up to 20 min)…"
+          for i in $(seq 1 40); do
+            got="$(curl -fsS --max-time 10 "$url" | sed -n 's/.*"sha":"\([^"]*\)".*/\1/p' || true)"
+            echo "[$i] reported sha=${got:-<none>}"
+            if [ "$got" = "$want" ]; then echo "Converged."; exit 0; fi
+            sleep 30
+          done
+          echo "::warning::Could not confirm convergence on $want (tag may not encode a sha); check health below"
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          health="$(curl -fsS --max-time 10 https://atlas.labmgm.org/api/v1/health)"
+          echo "health: $health"
+          echo "$health" | grep -q '"status":"ok"' || { echo "::error::health not ok after rollback"; exit 1; }
