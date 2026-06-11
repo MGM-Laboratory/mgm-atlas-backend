@@ -20,6 +20,12 @@ export default () => ({
     jwksUri: process.env.KEYCLOAK_JWKS_URI!,
     audience: process.env.KEYCLOAK_AUDIENCE ?? 'account',
   },
+  auth: {
+    // Verify Keycloak token signatures on POST /auth/login (JWKS + issuer +
+    // audience). Emergency kill switch only: AUTH_VERIFY_TOKENS=false
+    // restores the legacy trust-the-client behavior without a rebuild.
+    verifyTokens: (process.env.AUTH_VERIFY_TOKENS ?? 'true').toLowerCase() !== 'false',
+  },
   bootstrap: {
     adminEmail: process.env.BOOTSTRAP_ADMIN_EMAIL ?? 'admin@labmgm.org',
     adminNotificationEmails: (process.env.ADMIN_NOTIFICATION_EMAILS ?? '')
