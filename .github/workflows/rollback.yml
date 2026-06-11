@@ -40,12 +40,13 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Verify the target tag exists
+        env:
+          IMAGE: ${{ steps.img.outputs.image }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
-          IMAGE='${{ steps.img.outputs.image }}'
-          TAG='${{ inputs.image_tag }}'
-          echo "Inspecting ${IMAGE}:${TAG}"
-          docker buildx imagetools inspect "${IMAGE}:${TAG}" >/dev/null
+          echo "Inspecting ${IMAGE}:${IMAGE_TAG}"
+          docker buildx imagetools inspect "${IMAGE}:${IMAGE_TAG}" >/dev/null
           echo "Target exists."
 
   rollback:
@@ -65,12 +66,13 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Promote target tag to :latest
+        env:
+          IMAGE: ${{ needs.validate.outputs.image }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
-          IMAGE='${{ needs.validate.outputs.image }}'
-          TAG='${{ inputs.image_tag }}'
-          echo "Rolling ${IMAGE}:latest -> ${IMAGE}:${TAG}"
-          docker buildx imagetools create -t "${IMAGE}:latest" "${IMAGE}:${TAG}"
+          echo "Rolling ${IMAGE}:latest -> ${IMAGE}:${IMAGE_TAG}"
+          docker buildx imagetools create -t "${IMAGE}:latest" "${IMAGE}:${IMAGE_TAG}"
 
   verify-deploy:
     needs: [validate, rollback]
@@ -79,10 +81,12 @@ jobs:
       contents: read
     steps:
       - name: Wait for production to converge on the rolled-back tag
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
           # latest-<sha7> -> sha7
-          want="$(echo '${{ inputs.image_tag }}' | sed 's/^.*latest-//')"
+          want="$(printf '%s' "$IMAGE_TAG" | sed 's/^.*latest-//')"
           url='https://atlas.labmgm.org/api/v1/version'
           echo "Waiting for $url to report sha=$want (up to 20 min)…"
           for i in $(seq 1 40); do
