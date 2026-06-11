@@ -1,0 +1,52 @@
+name: 💡 Feature request
+description: Propose an improvement to the Atlas API
+title: "feat: "
+labels: ["enhancement", "status: needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the pain point, not the solution — "As a project manager, I can't…"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How do you imagine it working? Endpoints, data, behavior.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Auth / sessions
+        - Users / dashboard / bookmarks
+        - Projects / discovery / featured
+        - Media uploads
+        - Tags
+        - Contributions / team / invites
+        - Notifications / web push
+        - Chat
+        - PMO (tasks, notes, whiteboards, files)
+        - Voice (LiveKit)
+        - Webhooks
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: references
+    attributes:
+      label: Mockups or references
+      description: Links, screenshots, or prior art from other tools.
+  - type: checkboxes
+    id: license-ack
+    attributes:
+      label: Contribution policy
+      options:
+        - label: I understand code contributions are limited to MGM Laboratory members (see CONTRIBUTING)
+          required: true

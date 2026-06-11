@@ -1,0 +1,85 @@
+name: 🐛 Bug report
+description: Something in the Atlas API isn't working right
+title: "bug: "
+labels: ["bug", "status: needs-triage"]
+body:
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before you start
+      options:
+        - label: I searched existing issues and this isn't a duplicate
+          required: true
+        - label: This is not a security vulnerability (those go to the Security tab, never a public issue)
+          required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the API is affected?
+      options:
+        - Auth / sessions
+        - Users / dashboard / bookmarks
+        - Projects / discovery / featured
+        - Media uploads (S3 presign)
+        - Tags
+        - Contributions / team / invites
+        - Notifications / web push
+        - Chat
+        - PMO (tasks, notes, whiteboards, files)
+        - Voice (LiveKit)
+        - Webhooks (n8n / LiveKit callbacks)
+        - Health / operations
+        - Docker / CI / infrastructure
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Production (atlas.labmgm.org)
+        - Staging
+        - Local development
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit or image tag
+      description: e.g. `latest-a1b2c3d` or a commit SHA, if you know it
+      placeholder: latest-a1b2c3d
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you observe, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. POST /api/v1/… with body …
+        2. Observe response …
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or response body
+      description: Paste output here — it formats automatically. Redact secrets and tokens.
+      render: shell
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Blocker — production is broken for everyone
+        - Major — a feature is unusable
+        - Minor — annoying but there's a workaround
+        - Cosmetic
+    validations:
+      required: true
