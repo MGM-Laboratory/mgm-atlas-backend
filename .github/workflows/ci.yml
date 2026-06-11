@@ -5,17 +5,25 @@ on:
     branches: ["*"]
   workflow_call:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # Required check (name is part of the branch-protection contract — do not rename).
   lint-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 9.12.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: pnpm
@@ -31,5 +39,73 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Test
-        run: pnpm exec jest --passWithNoTests
+      - name: Test (with coverage gate)
+        run: pnpm exec jest --coverage
+
+      - name: Upload coverage (audit)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-${{ github.sha }}
+          path: coverage/
+          retention-days: 90
+
+  # Integration tests against a real Postgres. Not yet a required check;
+  # ratcheted in after a green streak.
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: atlas
+          POSTGRES_DB: atlas_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atlas"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Real DB; everything else is dummy — the e2e never reaches Keycloak/S3/Redis.
+      DATABASE_URL: postgresql://atlas:atlas@localhost:5432/atlas_e2e?schema=public
+      NODE_ENV: test
+      APP_BASE_URL: http://localhost:3000
+      API_GLOBAL_PREFIX: api/v1
+      KEYCLOAK_BASE_URL: http://localhost:8080
+      KEYCLOAK_REALM: test
+      KEYCLOAK_CLIENT_ID: atlas-test
+      KEYCLOAK_ISSUER: http://localhost:8080/realms/test
+      KEYCLOAK_JWKS_URI: http://localhost:8080/realms/test/protocol/openid-connect/certs
+      BOOTSTRAP_ADMIN_EMAIL: admin@labmgm.org
+      AWS_REGION: ap-southeast-3
+      AWS_S3_BUCKET: dummy
+      AWS_ACCESS_KEY_ID: dummy
+      AWS_SECRET_ACCESS_KEY: dummy
+      N8N_BASE_URL: http://localhost:5678
+      N8N_WEBHOOK_SECRET: dummy
+      INTERNAL_JWT_SECRET: dummy-internal-secret
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile=false
+
+      - name: Generate Prisma client
+        run: pnpm prisma:generate
+
+      - name: Apply migrations to the test DB
+        run: pnpm prisma migrate deploy
+
+      - name: e2e tests
+        run: pnpm test:e2e
