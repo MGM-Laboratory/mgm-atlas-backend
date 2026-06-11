@@ -25,3 +25,4 @@ lerna-debug.log*
 
 # TypeScript incremental build info
 *.tsbuildinfo
+coverage/
