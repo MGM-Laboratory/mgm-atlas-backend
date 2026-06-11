@@ -69,9 +69,25 @@ async function main() {
     });
   }
 
+  // Feature flags: register known keys (disabled by default — safe). Only
+  // create if absent so an operator's toggled value is never reset on reseed.
+  const DEFAULT_FLAGS: { key: string; description: string }[] = [
+    {
+      key: 'ui.maintenance_banner',
+      description: 'Show a site-wide maintenance banner in the frontend.',
+    },
+  ];
+  for (const f of DEFAULT_FLAGS) {
+    await prisma.featureFlag.upsert({
+      where: { key: f.key },
+      update: {}, // never override an operator's live value
+      create: { key: f.key, enabled: false, description: f.description },
+    });
+  }
+
   // eslint-disable-next-line no-console
   console.log(
-    `Seeded ${DEFAULT_TAGS.length} tags and ${DEFAULT_COLLABORATION_ROLES.length} collaboration roles.`,
+    `Seeded ${DEFAULT_TAGS.length} tags, ${DEFAULT_COLLABORATION_ROLES.length} collaboration roles, ${DEFAULT_FLAGS.length} feature flags.`,
   );
 }
 
