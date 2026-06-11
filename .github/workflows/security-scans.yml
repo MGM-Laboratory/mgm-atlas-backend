@@ -1,0 +1,116 @@
+name: security-scans
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["*"]
+  schedule:
+    - cron: "41 4 * * 1" # Mondays 04:41 UTC — weekly full-history secret sweep
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-scans-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Static analysis (OWASP + TypeScript rule packs). SARIF → code scanning.
+  semgrep:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install semgrep
+        run: pip install --no-cache-dir semgrep==1.166.0
+
+      - name: Scan
+        run: |
+          semgrep scan \
+            --config p/default --config p/typescript --config p/owasp-top-ten \
+            --sarif --output semgrep.sarif --metrics off
+        # Do not fail the build yet; findings are reviewed in the Security tab.
+        # Tighten to `--error` once the backlog is triaged (pre-ratchet).
+        continue-on-error: true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  # Secret detection. PRs scan the working tree (fast, current state); the
+  # scheduled run scans full git history (catches anything ever committed).
+  gitleaks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: ${{ github.event_name == 'schedule' && 0 || 1 }}
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Scan working tree (PR / push)
+        if: ${{ github.event_name != 'schedule' }}
+        run: gitleaks dir . --redact --report-format sarif --report-path gitleaks.sarif --exit-code 1
+
+      - name: Scan full history (weekly)
+        if: ${{ github.event_name == 'schedule' }}
+        run: gitleaks git . --redact --report-format sarif --report-path gitleaks.sarif --exit-code 1
+
+      - name: Upload SARIF
+        if: ${{ always() && hashFiles('gitleaks.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
+
+  # Dependency / filesystem vulnerability + IaC misconfig scan.
+  trivy-fs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-fs.sarif
+          exit-code: "0" # report-only until the backlog is triaged (pre-ratchet)
+
+      - name: Upload SARIF
+        if: ${{ always() && hashFiles('trivy-fs.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
