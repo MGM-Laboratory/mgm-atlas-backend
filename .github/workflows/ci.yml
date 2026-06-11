@@ -104,8 +104,14 @@ jobs:
       - name: Generate Prisma client
         run: pnpm prisma:generate
 
-      - name: Apply migrations to the test DB
-        run: pnpm prisma migrate deploy
+      # Build the schema directly from schema.prisma. We intentionally do NOT
+      # use `migrate deploy` here: the repo's migrations use bare numeric
+      # prefixes (…/9_, 10_, 11_…) which sort lexicographically, so on a FRESH
+      # database deploy applies 10_ before 5_ and fails (type created in 5_).
+      # Prod/staging are unaffected (migrations were applied incrementally).
+      # `db push` derives a correct, dependency-ordered schema for the test DB.
+      - name: Build schema on the test DB
+        run: pnpm prisma db push --skip-generate --accept-data-loss
 
       - name: e2e tests
         run: pnpm test:e2e
