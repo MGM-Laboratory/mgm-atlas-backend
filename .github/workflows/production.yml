@@ -3,6 +3,19 @@ name: production
 on:
   push:
     branches: ["main"]
+    # Docs-only merges must not rebuild (and auto-redeploy) production.
+    # Use "Run workflow" if you ever need to force a build.
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".github/**"
+      - ".gitattributes"
+      - ".gitignore"
+      - ".editorconfig"
+      - "LICENSE"
+      - ".env.example"
+      - "docker-compose.yml"
+      - "services/livekit/livekit.yaml"
   workflow_dispatch:
 
 env:

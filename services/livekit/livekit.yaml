@@ -1,16 +1,15 @@
 # LiveKit server config for Atlas voice chat (Phase 0).
 #
-# Architecture: keikaku is Tailscale-only (no public IP). Public traffic
-# reaches LiveKit via the subnet-router VPS (public IP 103.196.153.62),
-# which proxies signaling (WSS) over /livekit/ and forwards UDP/TCP/7882
-# over Tailscale to this container.
+# Architecture: the app host has no public IP of its own. Public traffic
+# reaches LiveKit via the reverse proxy in front of it, which proxies
+# signaling (WSS) over /livekit/ and forwards UDP/TCP/7882 to this
+# container.
 #
 # UDP Mux: a single UDP port (7882) carries ALL WebRTC media for ALL
 # clients/rooms. LiveKit's built-in mux demultiplexes by session at the
-# application layer. This means the VPS only needs to forward ONE UDP
-# port (not the usual 50000-50100 range), the VPS firewall only needs
-# ONE rule, and Tailscale only carries one UDP flow per concurrent
-# participant.
+# application layer. This means the proxy only needs to forward ONE UDP
+# port (not the usual 50000-50100 range) and its firewall only needs
+# ONE rule.
 
 port: 7880
 
@@ -18,15 +17,15 @@ rtc:
   # Single UDP port for all media (UDP Mux).
   udp_port: 7882
   # TCP fallback for clients on UDP-blocking networks. Shares the same
-  # 7882 port so the VPS only needs one stream rule to handle both.
+  # 7882 port so the proxy only needs one stream rule to handle both.
   tcp_port: 7882
-  # Skip STUN — LiveKit would otherwise discover keikaku's egress IP,
-  # which is wrong (clients can't reach keikaku directly). Use the
+  # Skip STUN — LiveKit would otherwise discover this host's egress IP,
+  # which is wrong (clients can't reach this host directly). Use the
   # explicit NAT 1:1 mapping below.
   use_external_ip: false
-  # Tell LiveKit to advertise the VPS public IP in ICE candidates
-  # (clients send media to <VPS_PUBLIC_IP>:7882, which the VPS
-  # forwards to us over Tailscale).
+  # Tell LiveKit to advertise the proxy's public IP in ICE candidates
+  # (clients send media to <proxy-public-ip>:7882, which the proxy
+  # forwards to this container).
   node_ip: 103.196.153.62
 
 # TURN-TLS is deferred to Phase 7 polish — UDP Mux on a single

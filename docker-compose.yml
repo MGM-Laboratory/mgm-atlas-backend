@@ -52,11 +52,10 @@ services:
   # this container — LivekitService.isAvailable() returns false and the
   # /voice/* routes report unavailable rather than crash.
   #
-  # Network topology: keikaku has no public IP. The subnet-router VPS
-  # (public IP 103.196.153.62, runs nginx) forwards both signaling
-  # (HTTP/WSS via the http block) and media (UDP+TCP/7882 via the
-  # stream {} block) over Tailscale to this container. Media uses
-  # UDP Mux on a single port — see services/livekit/livekit.yaml.
+  # Network topology: the reverse proxy in front of this host forwards
+  # both signaling (HTTP/WSS via its http block) and media (UDP+TCP/7882
+  # via its stream block) to this container. Media uses UDP Mux on a
+  # single port — see services/livekit/livekit.yaml.
   atlas-livekit:
     image: livekit/livekit-server:latest
     container_name: atlas-livekit
@@ -73,10 +72,10 @@ services:
     volumes:
       - ./services/livekit/livekit.yaml:/etc/livekit.yaml:ro
     ports:
-      # Signaling — VPS nginx proxies wss://atlas.labmgm.org/livekit here.
+      # Signaling — the reverse proxy forwards wss://<your-domain>/livekit here.
       - "${LIVEKIT_HOST_PORT:-7880}:7880"
-      # UDP Mux: one port carries every room's media. VPS nginx stream {}
-      # forwards UDP+TCP/7882 over Tailscale to here. The TCP listener
+      # UDP Mux: one port carries every room's media. The reverse proxy's
+      # stream block forwards UDP+TCP/7882 to here. The TCP listener
       # is the in-network fallback for UDP-blocked clients.
       - "7882:7882/udp"
       - "7882:7882"
@@ -101,10 +100,10 @@ services:
   # The egress worker needs:
   #   - LIVEKIT_WS_URL : ws://atlas-livekit:7880 (SFU on the docker network)
   #   - LIVEKIT_API_KEY / LIVEKIT_API_SECRET : same as the SFU's keys
-  #   - REDIS_URL : coordinates with the SFU; reuses the keikaku Redis
+  #   - REDIS_URL : coordinates with the SFU; reuses the host's Redis
   #
   # The container ships Chromium for room composite rendering — needs
-  # ~1GB RAM headroom. Keikaku has plenty.
+  # ~1GB RAM headroom on the host.
   atlas-livekit-egress:
     image: livekit/egress:latest
     container_name: atlas-livekit-egress

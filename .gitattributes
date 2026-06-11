@@ -1,0 +1,16 @@
+# Normalize line endings
+* text=auto eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.woff2 binary
+
+# Keep generated/bulky files out of diffs and language stats
+pnpm-lock.yaml linguist-generated -diff
+prisma/migrations/** linguist-generated
+docs/** linguist-documentation
