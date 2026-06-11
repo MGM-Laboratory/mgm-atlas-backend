@@ -1,0 +1,19 @@
+# Gitleaks config — extends the built-in ruleset, adds project allowlist.
+# Every allowlist entry must be a documented non-secret (placeholders, fixtures).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Atlas false-positive allowlist (non-secrets only)"
+paths = [
+  '''\.env\.example$''',
+  '''pnpm-lock\.yaml$''',
+  # Phase 0 auth tests generate throwaway RSA/HMAC keys at runtime.
+  '''src/modules/auth/keycloak-token\.service\.spec\.ts$''',
+]
+# `replace_me*` / `change-this` are the documented placeholders in .env.example
+# and docs; never real credentials.
+regexes = [
+  '''replace_me[a-z_]*''',
+  '''change-this[a-z-]*''',
+]

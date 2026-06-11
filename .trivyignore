@@ -1,0 +1,3 @@
+# Trivy ignore file. Each entry MUST carry a justification and an expiry date.
+# Format:  CVE-XXXX-XXXXX  # <why it's accepted> — review by YYYY-MM-DD
+# Empty by default — prefer fixing (bump the dependency) over ignoring.
