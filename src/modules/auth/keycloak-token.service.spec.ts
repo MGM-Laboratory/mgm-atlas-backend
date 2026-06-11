@@ -1,6 +1,6 @@
 import { createServer, Server } from 'node:http';
 import { AddressInfo } from 'node:net';
-import { generateKeyPairSync } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
@@ -155,7 +155,10 @@ describe('KeycloakTokenService', () => {
       service.verifyLoginTokens({ accessToken: `${header}.${body}.` }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
 
-    const hs256 = jwt.sign({ sub: 'user-123', aud: AUDIENCE }, 'shared-secret', {
+    // Throwaway HMAC key generated at runtime — proves the verifier rejects
+    // HS* downgrades without embedding a literal secret in the test.
+    const hmacKey = randomBytes(32).toString('hex');
+    const hs256 = jwt.sign({ sub: 'user-123', aud: AUDIENCE }, hmacKey, {
       algorithm: 'HS256',
       issuer: ISSUER,
       keyid: KID,
