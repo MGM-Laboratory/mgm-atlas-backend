@@ -110,9 +110,47 @@ jobs:
           echo "Promoting ${IMAGE}@${DIGEST} -> ${IMAGE}:latest"
           docker buildx imagetools create -t "${IMAGE}:latest" "${IMAGE}@${DIGEST}"
 
-  # 3) Wait for Watchtower on keikaku to converge onto the new SHA, then smoke.
-  verify-deploy:
+  # 2b) Deterministic converge: after the gated retag, recreate the container
+  #     on the host via compose so we don't depend on Watchtower's non-atomic
+  #     update (which once stranded the container on a daemon timeout). Joins
+  #     the tailnet ephemerally, then SSHes in. Inert until DEPLOY_CONVERGE_ENABLED
+  #     is set — see docs/deploy-converge-setup.md. Watchtower remains the
+  #     fallback, and verify-deploy below is the safety net either way.
+  converge:
     needs: [build, release-production]
+    runs-on: ubuntu-latest
+    if: ${{ vars.DEPLOY_CONVERGE_ENABLED == 'true' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Connect to tailnet (ephemeral node)
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Recreate backend on the production host
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          COMPOSE_DIR: /home/user/docker/mgm-atlas-backend
+          SERVICE: atlas-backend
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$RUNNER_TEMP/deploy_key"
+          chmod 600 "$RUNNER_TEMP/deploy_key"
+          ssh -i "$RUNNER_TEMP/deploy_key" -o StrictHostKeyChecking=accept-new \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "cd '${COMPOSE_DIR}' && docker compose pull '${SERVICE}' && docker compose up -d '${SERVICE}'"
+
+  # 3) Confirm the new SHA is actually serving (covers both converge and the
+  #    Watchtower fallback), then smoke. Runs whether converge ran or was skipped.
+  verify-deploy:
+    needs: [build, release-production, converge]
+    if: ${{ always() && needs.release-production.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
