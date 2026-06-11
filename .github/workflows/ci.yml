@@ -73,7 +73,7 @@ jobs:
       DATABASE_URL: postgresql://atlas:atlas@localhost:5432/atlas_e2e?schema=public
       NODE_ENV: test
       APP_BASE_URL: http://localhost:3000
-      API_GLOBAL_PREFIX: api/v1
+      API_GLOBAL_PREFIX: api
       KEYCLOAK_BASE_URL: http://localhost:8080
       KEYCLOAK_REALM: test
       KEYCLOAK_CLIENT_ID: atlas-test
