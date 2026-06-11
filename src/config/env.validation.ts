@@ -70,6 +70,25 @@ class EnvVars {
   @IsString()
   AUTH_VERIFY_TOKENS?: string;
 
+  // ─── Observability (all optional; empty = feature off / ships dark) ───
+  /// Bearer token guarding GET /api/v1/metrics. Empty → endpoint 404s.
+  @IsOptional()
+  @IsString()
+  METRICS_TOKEN?: string;
+
+  /// Sentry/GlitchTip DSN. Empty → error reporting is a no-op.
+  @IsOptional()
+  @IsString()
+  SENTRY_DSN?: string;
+
+  @IsOptional()
+  @IsString()
+  SENTRY_ENVIRONMENT?: string;
+
+  @IsOptional()
+  @IsString()
+  SENTRY_TRACES_SAMPLE_RATE?: string;
+
   @IsString()
   @IsNotEmpty()
   BOOTSTRAP_ADMIN_EMAIL!: string;

@@ -1,3 +1,4 @@
+import './instrument'; // Sentry init — must be imported first (no-op without SENTRY_DSN).
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';

@@ -58,4 +58,8 @@ describe('App (e2e)', () => {
   it('GET /api/v1/auth/session without a bearer is unauthorized', async () => {
     await request(app.getHttpServer()).get('/api/v1/auth/session').expect(401);
   });
+
+  it('GET /api/v1/metrics is disabled (404) when METRICS_TOKEN is unset', async () => {
+    await request(app.getHttpServer()).get('/api/v1/metrics').expect(404);
+  });
 });

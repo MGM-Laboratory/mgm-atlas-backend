@@ -26,6 +26,17 @@ export default () => ({
     // restores the legacy trust-the-client behavior without a rebuild.
     verifyTokens: (process.env.AUTH_VERIFY_TOKENS ?? 'true').toLowerCase() !== 'false',
   },
+  metrics: {
+    // Bearer token guarding GET /api/v1/metrics. Empty (default) → endpoint
+    // 404s (disabled). Set it + scrape over the tailnet from Prometheus.
+    token: process.env.METRICS_TOKEN ?? '',
+  },
+  sentry: {
+    // Error tracking (GlitchTip-compatible). Empty DSN → no-op (ships dark).
+    dsn: process.env.SENTRY_DSN ?? '',
+    environment: process.env.SENTRY_ENVIRONMENT ?? process.env.NODE_ENV ?? 'development',
+    tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE ?? '0'),
+  },
   bootstrap: {
     adminEmail: process.env.BOOTSTRAP_ADMIN_EMAIL ?? 'admin@labmgm.org',
     adminNotificationEmails: (process.env.ADMIN_NOTIFICATION_EMAILS ?? '')
