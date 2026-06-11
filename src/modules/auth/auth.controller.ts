@@ -1,10 +1,13 @@
 import { Controller, Get, Post, Delete, Body, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '@/common/decorators/public.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@/common/types/authenticated-user.type';
 import { AuthService } from './auth.service';
 import { SessionService } from './session.service';
+import { KeycloakTokenService } from './keycloak-token.service';
+import { LoginDto } from './dto/login.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -14,6 +17,8 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly sessionService: SessionService,
+    private readonly keycloakTokens: KeycloakTokenService,
+    private readonly config: ConfigService,
   ) {}
 
   /**
@@ -42,23 +47,32 @@ export class AuthController {
       },
     },
   })
-  async login(
-    @Body()
-    dto: {
-      keycloakId: string;
-      email: string;
-      name: string;
-      picture?: string;
-      accessToken: string;
-      refreshToken?: string;
-      idToken?: string;
-    },
-  ) {
+  async login(@Body() dto: LoginDto) {
     try {
       this.logger.log('Login request received', { keycloakId: dto.keycloakId, email: dto.email });
 
-      // Sync user from Keycloak token data
-      const user = await this.authService.syncUserFromTokenData(dto);
+      const verifyTokens = this.config.get<boolean>('auth.verifyTokens') ?? true;
+      let user;
+      if (verifyTokens) {
+        // Identity comes from the cryptographically verified token, never
+        // from the request body. The body fields are cosmetic fallbacks.
+        const claims = await this.keycloakTokens.verifyLoginTokens(dto);
+        if (dto.keycloakId !== claims.sub) {
+          this.logger.warn('Client-supplied keycloakId differs from verified token subject', {
+            supplied: dto.keycloakId,
+            verified: claims.sub,
+          });
+        }
+        if (!claims.name && !claims.given_name && !claims.preferred_username && dto.name) {
+          claims.name = dto.name;
+        }
+        user = await this.authService.syncUserFromToken(claims);
+      } else {
+        this.logger.warn(
+          'AUTH_VERIFY_TOKENS=false — accepting unverified identity claims (emergency mode)',
+        );
+        user = await this.authService.syncUserFromTokenData(dto);
+      }
       this.logger.log('User synced', { userId: user.id });
 
       // Create session in database
@@ -107,7 +121,7 @@ export class AuthController {
   async logout(@CurrentUser() user: AuthenticatedUser): Promise<{ ok: boolean }> {
     // Session ID is extracted from the Authorization header by the strategy
     // The strategy validates it and passes the user. Now we destroy it.
-    // Note: This is handled at the middleware level for now. 
+    // Note: This is handled at the middleware level for now.
     // In a full implementation, the session ID would be passed through context.
     return { ok: true };
   }

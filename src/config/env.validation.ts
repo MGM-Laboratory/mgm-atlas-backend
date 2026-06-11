@@ -1,5 +1,15 @@
 import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUrl, Max, Min, validateSync } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Max,
+  Min,
+  validateSync,
+} from 'class-validator';
 
 enum AppEnv {
   Development = 'development',
@@ -53,6 +63,12 @@ class EnvVars {
   @IsOptional()
   @IsString()
   KEYCLOAK_AUDIENCE?: string;
+
+  /// Emergency kill switch for login token verification. Unset/true =
+  /// verify (default). Only set to "false" during an auth incident.
+  @IsOptional()
+  @IsString()
+  AUTH_VERIFY_TOKENS?: string;
 
   @IsString()
   @IsNotEmpty()
