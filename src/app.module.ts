@@ -16,6 +16,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { MailerModule } from './modules/mailer/mailer.module';
 import { HealthModule } from './modules/health/health.module';
+import { VersionModule } from './modules/version/version.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { PmoModule } from './modules/pmo/pmo.module';
@@ -56,6 +57,7 @@ import { RedisModule } from './infra/redis/redis.module';
     PmoModule,
     VoiceModule,
     HealthModule,
+    VersionModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
