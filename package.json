@@ -1,6 +1,6 @@
 {
   "name": "mgm-atlas-backend",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MGM Atlas — project portfolio API for MGM Laboratory",
   "private": true,
   "license": "UNLICENSED",
